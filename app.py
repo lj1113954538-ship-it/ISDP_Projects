@@ -201,8 +201,7 @@ with k5:
 
 left, right = st.columns([1, 1])
 with left:
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">分时供需趋势</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">分时供需趋势</div>', unsafe_allow_html=True)
     trend = pd.DataFrame({"hour": list(range(HOURS)), "Demand": [summary[h]["demand"] for h in range(HOURS)], "Supply": [summary[h]["supply"] for h in range(HOURS)]})
     diff = trend.assign(Gap=(trend["Demand"] - trend["Supply"]).clip(lower=0))
     base = alt.Chart(trend).properties(height=400, width="container")
@@ -231,8 +230,7 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">地理空间热力联动</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">地理空间热力联动</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
     geo_df["缺口值"] = (geo_df["weight"] * 12).round(1)
     geo_df["建议加价"] = (geo_df["weight"] * 1.28).round(1)
@@ -243,8 +241,7 @@ with right:
     st.scatter_chart(geo_df, x="lon", y="lat", size="缺口值", color="颜色深度", use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title" style="margin-bottom:10px;">AI 决策工作台</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AI 决策工作台</div>', unsafe_allow_html=True)
 if run_agent:
     st.session_state.agent_ready = True
     with st.status("AI agent 正在推理", expanded=True) as status:
@@ -277,8 +274,7 @@ if st.session_state.strategy_confirmed:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
 ab = simulation.ab_metrics
 结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
 st.info(结论)
