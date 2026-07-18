@@ -259,9 +259,9 @@ with right:
     geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
     geo_df["zone_name"] = [f"一级网格-{i+1:02d}" for i in range(len(geo_df))]
     geo_df["sub_zone"] = [f"二级网格-{i+1:02d}" for i in range(len(geo_df))]
-    geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1200)
+    geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1600)
     geo_df["fill_rgba"] = geo_df["backlog"].apply(
-        lambda x: [255, 75, 75, 200] if x >= 12 else ([255, 165, 0, 170] if x >= 6 else [255, 255, 255, 30])
+        lambda x: [255, 75, 75, 210] if x >= 12 else ([255, 165, 0, 180] if x >= 6 else [255, 255, 255, 30])
     )
 
     # 补充灰度底图网格层，强化区域轮廓感
@@ -295,7 +295,7 @@ with right:
         get_radius="radius",
         radius_scale=1,
         radius_min_pixels=3,
-        radius_max_pixels=18,
+        radius_max_pixels=22,
         get_fill_color="fill_rgba",
         get_line_color=[15, 23, 42],
         line_width_min_pixels=1,
@@ -303,6 +303,7 @@ with right:
         filled=True,
         pickable=True,
         auto_highlight=True,
+        get_shape='"triangle"',
     )
     deck = pdk.Deck(
         map_style="mapbox://styles/mapbox/dark-v10",
