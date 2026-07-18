@@ -244,7 +244,7 @@ with right:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title">AI 决策工作台</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel-title" style="margin-bottom:10px;">AI 决策工作台</div>', unsafe_allow_html=True)
 if run_agent:
     st.session_state.agent_ready = True
     with st.status("AI agent 正在推理", expanded=True) as status:
@@ -278,7 +278,7 @@ if st.session_state.strategy_confirmed:
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title">AB 实验指标面板</div>', unsafe_allow_html=True)
+st.markdown('<div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
 ab = simulation.ab_metrics
 结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
 st.info(结论)
