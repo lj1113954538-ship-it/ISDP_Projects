@@ -19,6 +19,7 @@ from isdp_data_simulator_validation import (
 
 st.set_page_config(page_title="ISDP 智能决策中心", layout="wide")
 
+st.markdown('<html lang="zh-CN" class="notranslate" translate="no"></html>', unsafe_allow_html=True)
 
 CUSTOM_CSS = """
 <style>
