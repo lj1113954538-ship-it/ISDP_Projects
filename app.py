@@ -155,27 +155,22 @@ with header_left:
     st.markdown('<div class="title">ISDP 智能供需决策中心</div>', unsafe_allow_html=True)
 with header_right:
     st.markdown(
-        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">数据更新时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br/>核心模式：一键闭环管控</div>',
+        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">数据更新时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br/>核心模式：AI闭环智能调度</div>',
         unsafe_allow_html=True,
     )
 
-badge_cols = st.columns(4)
-with badge_cols[0]:
-    st.markdown(
-        "<div class='badge' style='width:100%; justify-content:flex-start;'><span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444,0 0 14px #ef4444;animation:pulse 1.8s infinite;margin-right:8px;'></span>红绿灯预警</div>",
-        unsafe_allow_html=True,
-    )
-with badge_cols[1]:
-    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>智能防错</div>", unsafe_allow_html=True)
-with badge_cols[2]:
-    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>一键下发</div>", unsafe_allow_html=True)
-with badge_cols[3]:
-    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>复盘飞轮</div>", unsafe_allow_html=True)
-
-status_cols = st.columns([1.7, 1.0], vertical_alignment="center")
-with status_cols[0]:
-    st.markdown('<div style="height:1px;"></div>', unsafe_allow_html=True)
-with status_cols[1]:
+badge_row_left, badge_row_right = st.columns([1.7, 1.0], vertical_alignment="center")
+with badge_row_left:
+    b1, b2, b3, b4 = st.columns(4)
+    with b1:
+        st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'><span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444,0 0 14px #ef4444;animation:pulse 1.8s infinite;margin-right:8px;'></span>实时供需断链预警</div>", unsafe_allow_html=True)
+    with b2:
+        st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>动态运力熔断机制</div>", unsafe_allow_html=True)
+    with b3:
+        st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>自动化调度令流转</div>", unsafe_allow_html=True)
+    with b4:
+        st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>策略效能归因复盘</div>", unsafe_allow_html=True)
+with badge_row_right:
     st.markdown(
         f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">当前场景：{scenario} | MAPE：{simulation.mape:.2f}%</div>',
         unsafe_allow_html=True,
@@ -220,14 +215,23 @@ with left:
                 color=alt.Color("series:N", scale=alt.Scale(domain=["Demand", "Supply"], range=["#67e8f9", "#86efac"]), legend=alt.Legend(title=None, orient="top", labelColor="#c9d7ea", labelFontSize=11)),
                 tooltip=["hour:Q", "series:N", "value:Q"],
             )
-            .properties(height=320, width="container")
+            .properties(height=400, width="container")
             .configure_view(strokeOpacity=0, fill="#11151c")
             .configure(background="transparent")
             .configure_axis(domainColor="#2a394c", tickColor="#2a394c")
             .configure_legend(fillColor="#11151c", strokeColor="#233549")
         )
         st.altair_chart(trend_chart, use_container_width=True)
-        st.markdown('<div class="panel-note">按小时展示 Demand vs Supply，统一暗色背景避免白色斑块。</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px;">'
+            '<div class="panel-note" style="margin-top:0;">今日补贴总额：$2447</div>'
+            '<div class="panel-note" style="margin-top:0;">剩余可用预算：$7553 <span style="color:#67e8f9;">(预算水位：24.5%)</span></div>'
+            '</div>'
+            '<div style="height:8px; background:#0f1724; border:1px solid #233549; border-radius:999px; overflow:hidden; margin-top:6px;">'
+            '<div style="width:24.5%; height:100%; background:linear-gradient(90deg, #22c55e, #f59e0b);"></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
@@ -239,54 +243,56 @@ with right:
         st.markdown('<div class="panel-note">日常：均匀分散；异常天气：写字楼/商圈聚集；节假日：景区/高铁站/机场集中。</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title">AI 决策工作台</div>', unsafe_allow_html=True)
-if run_agent:
-    st.session_state.agent_ready = True
-    with st.status("AI agent 正在推理", expanded=True) as status:
-        st.write("🚨 【异常识别】监测到区域供给缺口。")
-        time.sleep(0.3)
-        st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
-        time.sleep(0.3)
-        st.write("💡 【策略生成】建议每单补贴上调 X 元。")
-        time.sleep(0.3)
-        st.write("✅ 【方案确认】等待人工确认后下发执行。")
-        status.update(label="AI agent 推理完成", state="complete")
+with st.container():
+    st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">AI 决策工作台</div>', unsafe_allow_html=True)
+    if run_agent:
+        st.session_state.agent_ready = True
+        with st.status("AI agent 正在推理", expanded=True) as status:
+            st.write("🚨 【异常识别】监测到区域供给缺口。")
+            time.sleep(0.3)
+            st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
+            time.sleep(0.3)
+            st.write("💡 【策略生成】建议每单补贴上调 X 元。")
+            time.sleep(0.3)
+            st.write("✅ 【方案确认】等待人工确认后下发执行。")
+            status.update(label="AI agent 推理完成", state="complete")
 
-if st.session_state.agent_ready:
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.button("⚡ 同意 AI 策略，一键下发执行", use_container_width=True, type="primary")
-    with c2:
-        if st.button("确认执行", use_container_width=True):
-            st.session_state.strategy_confirmed = True
-            st.success("🎉 执行成功！调度令已流转至 ERP 系统，单号：ISDP-2026-XXXX")
+    if st.session_state.agent_ready:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.button("⚡ 同意 AI 策略，一键下发执行", use_container_width=True, type="primary")
+        with c2:
+            if st.button("确认执行", use_container_width=True):
+                st.session_state.strategy_confirmed = True
+                st.success("✅ 执行成功 | 调度令已下发至 ERP (单号: ISDP-2026-XXXX)")
 
-if st.session_state.strategy_confirmed:
-    before = simulation.before_after_punctuality["执行前"]
-    after = simulation.before_after_punctuality["执行后"]
-    b1, b2 = st.columns(2)
-    with b1:
-        st.metric("执行前准时率", f"{before:.2f}%")
-    with b2:
-        st.metric("执行后准时率", f"{after:.2f}%", f"+{after - before:.2f}%")
+    if st.session_state.strategy_confirmed:
+        before = simulation.before_after_punctuality["执行前"]
+        after = simulation.before_after_punctuality["执行后"]
+        b1, b2 = st.columns(2)
+        with b1:
+            st.metric("执行前准时率", f"{before:.2f}%")
+        with b2:
+            st.metric("执行后准时率", f"{after:.2f}%", f"+{after - before:.2f}%")
 
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-st.markdown('<div class="panel-title">AB 实验指标面板</div>', unsafe_allow_html=True)
-ab = simulation.ab_metrics
-结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
-st.info(结论)
-ab_df = pd.DataFrame(
-    {
-        "指标": ["ROI", "匹配率", "压单量"],
-        "基准组": [ab["基准组"]["roi"], ab["基准组"]["match_rate"], ab["基准组"]["backlog"]],
-        "实验组": [ab["实验组"]["roi"], ab["实验组"]["match_rate"], ab["实验组"]["backlog"]],
-        "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
-    }
-)
-st.dataframe(ab_df, use_container_width=True, hide_index=True)
-st.markdown('</div>', unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">AB 实验指标面板</div>', unsafe_allow_html=True)
+    ab = simulation.ab_metrics
+    结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
+    st.info(结论)
+    ab_df = pd.DataFrame(
+        {
+            "指标": ["ROI", "匹配率", "压单量"],
+            "基准组": [ab["基准组"]["roi"], ab["基准组"]["match_rate"], ab["基准组"]["backlog"]],
+            "实验组": [ab["实验组"]["roi"], ab["实验组"]["match_rate"], ab["实验组"]["backlog"]],
+            "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
+        }
+    )
+    st.dataframe(ab_df, use_container_width=True, hide_index=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"场景：{scenario} ｜ 底层数据与前端展示已严格联动。")
