@@ -234,12 +234,9 @@ def _ab_metrics(records: List[HourlyRecord], scenario: str, subsidy_amount: floa
 
 def _emergency_strategies() -> List[str]:
     return [
-        "策略 A：跨网格动态调度运力，优先向高缺口区域倾斜。
-",
-        "策略 B：发放 8 元膨胀补贴券，锁定高响应司机。
-",
-        "策略 C：缩短派单半径，叠加人工值守。
-",
+        "策略 A：跨网格动态调度运力，优先向高缺口区域倾斜。",
+        "策略 B：发放 8 元膨胀补贴券，锁定高响应司机。",
+        "策略 C：缩短派单半径，叠加人工值守。",
     ]
 
 

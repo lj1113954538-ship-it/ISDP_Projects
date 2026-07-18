@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from isdp_data_simulator_validation import HOURS, SCENARIOS, build_grid_ids, simulate_business_scenario, summarize_by_hour
+from isdp_data_simulator_validation import HOURS, SCENARIOS, simulate_business_scenario, summarize_by_hour
 
 
 st.set_page_config(page_title="ISDP 智能决策中心", layout="wide")
