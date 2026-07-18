@@ -1,14 +1,9 @@
-"""ISDP 核心数据模拟引擎
+"""ISDP 核心数据模拟引擎（红绿灯式调度版）
 
-功能
-- 模拟 10 个 H3 风格时空网格，24 小时动态订单需求与可用运力供给
-- 随机生成突发暴雨爆单场景：需求暴增、供给下降
-- 计算供需缺口（Gap），运行基础匹配策略，并输出预测 MAPE
-- 自动输出 A/B 测试 ROI 对比（实验组 vs 基准组）
-
-说明
-- 这是一个可直接运行的 Demo 级模拟器，用于演示智能供需决策系统（ISDP）的核心闭环
-- 为避免外部依赖，H3 网格使用 H3 风格字符串进行模拟，不依赖第三方库
+目标
+- 面向一线业务调度人员
+- 强调直观视觉、智能防错、一键闭环
+- 严格联动三类业务场景
 """
 
 from __future__ import annotations
@@ -17,159 +12,275 @@ import math
 import random
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Tuple
-
+from typing import Dict, List
 
 SEED = 42
-GRID_COUNT = 10
 HOURS = 24
-BASE_DEMAND_LEVEL = 80
-BASE_SUPPLY_LEVEL = 78
-RAIN_EVENT_DURATION = 4
-RAIN_DEMAND_BOOST = 1.75
-RAIN_SUPPLY_DROP = 0.55
+GRID_COUNT = 10
+
+SCENARIOS = {
+    "日常正常状态": {
+        "demand_multiplier": 1.0,
+        "supply_multiplier": 1.0,
+        "subsidy_multiplier": 1.0,
+        "punctuality_base": 0.95,
+        "roi_target": (1.2, 1.5),
+    },
+    "异常天气状态": {
+        "demand_multiplier": 3.0,
+        "supply_multiplier": 0.6,
+        "subsidy_multiplier": 3.0,
+        "punctuality_base": 0.74,
+        "roi_target": (0.55, 0.65),
+    },
+    "传统节假日": {
+        "demand_multiplier": 1.7,
+        "supply_multiplier": 1.08,
+        "subsidy_multiplier": 0.72,
+        "punctuality_base": 0.97,
+        "roi_target": (2.0, 2.4),
+    },
+}
 
 
 @dataclass
 class HourlyRecord:
     grid_id: str
     hour: int
-    demand_actual: float
-    demand_pred: float
-    supply: float
-    rain_event: bool
-    gap: float = 0.0
-    matched_orders: float = 0.0
-    unmet_orders: float = 0.0
-    revenue_base: float = 0.0
-    revenue_experiment: float = 0.0
-    cost_experiment: float = 0.0
+    scenario: str
+    demand: int
+    supply: int
+    matched: int
+    backlog: int
+    on_time: int
+    subsidy: float
+    supply_hours: float
+    demand_pred: int
+    latitude: float
+    longitude: float
+    zone: str
 
 
-def build_grid_ids(count: int) -> List[str]:
-    return [f"h3_sim_{i:02d}" for i in range(count)]
+@dataclass
+class ScenarioSimulation:
+    scenario: str
+    records: List[HourlyRecord]
+    total_demand: int
+    total_supply: int
+    total_matched: int
+    backlog: int
+    punctuality_rate: float
+    subsidy_amount: float
+    supply_hours_increment: float
+    core_roi: float
+    mape: float
+    ab_metrics: Dict[str, Dict[str, float]]
+    emergency_strategies: List[str]
+    geo_points: List[Dict[str, float]]
+    before_after_punctuality: Dict[str, float]
 
 
-def generate_base_profiles(grid_ids: List[str]) -> Dict[str, Dict[str, float]]:
-    profiles = {}
-    for idx, grid_id in enumerate(grid_ids):
-        demand_amp = 0.18 + idx * 0.012
-        supply_amp = 0.12 + idx * 0.009
-        phase_shift = (idx % 5) * 0.6
-        base_demand = BASE_DEMAND_LEVEL + idx * 4
-        base_supply = BASE_SUPPLY_LEVEL + idx * 3
-        profiles[grid_id] = {
-            "demand_amp": demand_amp,
-            "supply_amp": supply_amp,
-            "phase_shift": phase_shift,
-            "base_demand": base_demand,
-            "base_supply": base_supply,
-        }
-    return profiles
+def build_grid_ids(count: int = GRID_COUNT) -> List[str]:
+    return [f"H3-{i:02d}" for i in range(count)]
 
 
-def pick_rain_event(rng: random.Random) -> Tuple[int, List[int], str]:
-    start_hour = rng.randint(8, 18)
-    duration = RAIN_EVENT_DURATION
-    affected_hours = list(range(start_hour, min(start_hour + duration, HOURS)))
-    affected_grids = rng.sample(build_grid_ids(GRID_COUNT), k=4)
-    return start_hour, affected_hours, ",".join(affected_grids)
+def build_grid_coords() -> Dict[str, tuple[float, float]]:
+    base_lat, base_lon = 31.2304, 121.4737
+    coords = {}
+    for idx, grid_id in enumerate(build_grid_ids()):
+        lat = base_lat + (idx % 5) * 0.04 + (idx // 5) * 0.02
+        lon = base_lon + (idx % 5) * 0.05 - (idx // 5) * 0.025
+        coords[grid_id] = (round(lat, 5), round(lon, 5))
+    return coords
 
 
-def is_affected(grid_id: str, affected_grids_csv: str) -> bool:
-    return grid_id in affected_grids_csv.split(",")
+def build_geo_points(scenario: str) -> List[Dict[str, float]]:
+    rng = random.Random(SEED + len(scenario))
+    if scenario == "异常天气状态":
+        base = [
+            (31.23, 121.48, 9.8),
+            (31.24, 121.49, 9.6),
+            (31.22, 121.47, 9.9),
+            (31.245, 121.495, 9.7),
+            (31.235, 121.485, 9.5),
+            (31.205, 121.455, 5.0),
+            (31.195, 121.445, 4.6),
+            (31.255, 121.505, 9.2),
+        ]
+        return [{"lat": lat, "lon": lon, "weight": weight + rng.uniform(-0.2, 0.2)} for lat, lon, weight in base]
+    if scenario == "传统节假日":
+        base = [
+            (31.17, 121.49, 9.8),
+            (31.15, 121.51, 9.7),
+            (31.20, 121.46, 9.5),
+            (31.18, 121.47, 9.3),
+            (31.21, 121.52, 9.4),
+            (31.26, 121.43, 8.8),
+            (31.27, 121.44, 8.9),
+            (31.16, 121.50, 9.1),
+        ]
+        return [{"lat": lat, "lon": lon, "weight": weight + rng.uniform(-0.2, 0.2)} for lat, lon, weight in base]
+    base = [
+        (31.21, 121.45, 6.2),
+        (31.23, 121.47, 6.8),
+        (31.25, 121.49, 6.4),
+        (31.19, 121.46, 6.0),
+        (31.22, 121.51, 6.5),
+        (31.24, 121.43, 6.1),
+        (31.20, 121.50, 6.3),
+        (31.26, 121.47, 6.7),
+    ]
+    return [{"lat": lat, "lon": lon, "weight": weight + rng.uniform(-0.15, 0.15)} for lat, lon, weight in base]
 
 
-def simulate_hourly_data() -> List[HourlyRecord]:
-    rng = random.Random(SEED)
-    grid_ids = build_grid_ids(GRID_COUNT)
-    profiles = generate_base_profiles(grid_ids)
-    rain_start_hour, rain_hours, affected_grids_csv = pick_rain_event(rng)
+def _hour_profile(hour: int) -> float:
+    angle = 2 * math.pi * hour / 24
+    return 1.0 + 0.16 * math.sin(angle - 0.7) + 0.06 * math.cos(angle * 2)
 
+
+def _zone_for_idx(idx: int, scenario: str) -> str:
+    if scenario == "异常天气状态":
+        return ["写字楼", "商圈", "写字楼", "商圈", "写字楼", "住宅区", "住宅区", "商圈", "写字楼", "商圈"][idx]
+    if scenario == "传统节假日":
+        return ["景区", "高铁站", "机场", "景区", "高铁站", "机场", "景区", "高铁站", "机场", "景区"][idx]
+    return ["住宅区", "商圈", "写字楼", "社区", "园区", "商圈", "住宅区", "社区", "园区", "写字楼"][idx]
+
+
+def _simulate_records(scenario: str) -> List[HourlyRecord]:
+    cfg = SCENARIOS[scenario]
+    rng = random.Random(SEED + abs(hash(scenario)) % 1000)
+    coords = build_grid_coords()
     records: List[HourlyRecord] = []
+
     for hour in range(HOURS):
-        hour_angle = 2 * math.pi * hour / 24
-        rush_boost = 1.22 if hour in (7, 8, 17, 18) else 1.0
-        for grid_id in grid_ids:
-            profile = profiles[grid_id]
-            demand_seasonality = 1 + profile["demand_amp"] * math.sin(hour_angle - profile["phase_shift"])
-            supply_seasonality = 1 + profile["supply_amp"] * math.cos(hour_angle - profile["phase_shift"])
+        for idx, grid_id in enumerate(build_grid_ids()):
+            profile = _hour_profile(hour)
+            demand = int(round((68 + idx * 4 + hour % 5) * profile + rng.normalvariate(0, 2.4)))
+            supply = int(round((66 + idx * 3 + (hour % 4)) * (1.0 + 0.08 * math.cos(2 * math.pi * hour / 24)) + rng.normalvariate(0, 1.8)))
+            demand = max(8, int(round(demand * cfg["demand_multiplier"])))
+            supply = max(5, int(round(supply * cfg["supply_multiplier"])))
 
-            noise_demand = rng.normalvariate(0, 4)
-            noise_supply = rng.normalvariate(0, 3)
+            if scenario == "异常天气状态":
+                if hour in range(8, 20) and idx in {1, 2, 3, 5, 7}:
+                    demand = int(round(demand * 1.08))
+                    supply = int(round(supply * 0.88))
+            elif scenario == "传统节假日":
+                if hour in {10, 11, 12, 17, 18, 19}:
+                    demand = int(round(demand * 1.14))
+                    supply = int(round(supply * 1.04))
 
-            demand_pred = max(5, profile["base_demand"] * demand_seasonality * rush_boost + noise_demand)
-            demand_actual = demand_pred * rng.uniform(0.92, 1.08)
-            supply = max(0, profile["base_supply"] * supply_seasonality + noise_supply)
-
-            rain_event = hour in rain_hours and is_affected(grid_id, affected_grids_csv)
-            if rain_event:
-                demand_actual *= RAIN_DEMAND_BOOST
-                demand_pred *= 1.18
-                supply *= RAIN_SUPPLY_DROP
-
+            demand_pred = max(1, int(round(demand * (0.94 + rng.uniform(-0.02, 0.02)))))
+            matched = min(demand, supply)
+            backlog = max(demand - supply, 0)
+            punctuality = max(0.45, min(0.99, cfg["punctuality_base"] - backlog / max(demand, 1) * 0.16 + rng.uniform(-0.008, 0.008)))
+            on_time = int(round(matched * punctuality))
+            subsidy = float(backlog) * cfg["subsidy_multiplier"] * (1.0 + 0.03 * (hour in {8, 17, 18}))
+            supply_hours = float(supply) * (1.0 + 0.08 * punctuality)
+            lat, lon = coords[grid_id]
             records.append(
                 HourlyRecord(
                     grid_id=grid_id,
                     hour=hour,
-                    demand_actual=round(demand_actual, 2),
-                    demand_pred=round(demand_pred, 2),
-                    supply=round(supply, 2),
-                    rain_event=rain_event,
+                    scenario=scenario,
+                    demand=demand,
+                    supply=supply,
+                    matched=matched,
+                    backlog=backlog,
+                    on_time=on_time,
+                    subsidy=round(subsidy, 2),
+                    supply_hours=round(supply_hours, 2),
+                    demand_pred=demand_pred,
+                    latitude=lat,
+                    longitude=lon,
+                    zone=_zone_for_idx(idx, scenario),
                 )
             )
     return records
 
 
-def compute_gap_and_matching(records: List[HourlyRecord]) -> None:
-    for record in records:
-        record.gap = round(record.demand_actual - record.supply, 2)
-        record.matched_orders = round(min(record.demand_actual, record.supply), 2)
-        record.unmet_orders = round(max(record.demand_actual - record.supply, 0), 2)
+def _mape(records: List[HourlyRecord]) -> float:
+    err = [abs(r.demand - r.demand_pred) / r.demand for r in records if r.demand > 0]
+    return round(sum(err) / len(err) * 100, 2) if err else 0.0
 
 
-def calculate_mape(records: List[HourlyRecord]) -> float:
-    ape_sum = 0.0
-    valid_count = 0
-    for record in records:
-        if record.demand_actual > 0:
-            ape_sum += abs(record.demand_actual - record.demand_pred) / record.demand_actual
-            valid_count += 1
-    return round(ape_sum / valid_count * 100, 2) if valid_count else 0.0
-
-
-def simulate_ab_roi(records: List[HourlyRecord]) -> Dict[str, float]:
-    total_base_revenue = 0.0
-    total_exp_revenue = 0.0
-    total_exp_cost = 0.0
-
-    for record in records:
-        base_matched = min(record.demand_actual, record.supply)
-        exp_supply_boost = record.supply * (1.12 if record.rain_event else 1.03)
-        exp_matched = min(record.demand_actual, exp_supply_boost)
-
-        base_revenue = base_matched * 18.0
-        exp_revenue = exp_matched * 18.8
-        exp_cost = max(0.0, exp_supply_boost - record.supply) * 6.0 + (1.5 if record.rain_event else 0.6)
-
-        record.revenue_base = round(base_revenue, 2)
-        record.revenue_experiment = round(exp_revenue, 2)
-        record.cost_experiment = round(exp_cost, 2)
-
-        total_base_revenue += base_revenue
-        total_exp_revenue += exp_revenue
-        total_exp_cost += exp_cost
-
-    base_roi = total_base_revenue
-    exp_roi = total_exp_revenue - total_exp_cost
-    roi_lift = (exp_roi - base_roi) / base_roi * 100 if base_roi > 0 else 0.0
-
+def _ab_metrics(records: List[HourlyRecord], scenario: str, subsidy_amount: float, matched_rate: float) -> Dict[str, Dict[str, float]]:
+    base_matched = sum(r.matched for r in records)
+    base_backlog = sum(r.backlog for r in records)
+    base_supply_hours = sum(r.supply_hours for r in records)
+    if scenario == "异常天气状态":
+        exp_supply_hours = base_supply_hours * 0.94 + base_matched * 0.05
+        exp_subsidy = subsidy_amount * 1.18
+    elif scenario == "传统节假日":
+        exp_supply_hours = base_supply_hours * 1.12 + base_matched * 0.08
+        exp_subsidy = subsidy_amount * 0.74
+    else:
+        exp_supply_hours = base_supply_hours * 1.06 + base_matched * 0.04
+        exp_subsidy = subsidy_amount * 0.92
+    base_roi = round(base_supply_hours / max(subsidy_amount, 1.0), 2)
+    exp_roi = round(exp_supply_hours / max(exp_subsidy, 1.0), 2)
+    base_match_rate = round(matched_rate * 100, 2)
+    exp_match_rate = round(min(99.99, base_match_rate * (1.05 if scenario != "异常天气状态" else 1.03)), 2)
+    exp_backlog = int(round(base_backlog * (0.84 if scenario == "异常天气状态" else 0.72 if scenario == "传统节假日" else 0.9)))
     return {
-        "base_roi": round(base_roi, 2),
-        "experiment_roi": round(exp_roi, 2),
-        "roi_lift_pct": round(roi_lift, 2),
-        "experiment_incremental_value": round(exp_roi - base_roi, 2),
+        "基准组": {"roi": base_roi, "match_rate": base_match_rate, "backlog": float(base_backlog)},
+        "实验组": {"roi": exp_roi, "match_rate": exp_match_rate, "backlog": float(exp_backlog)},
+        "提升率": {
+            "roi": round((exp_roi - base_roi) / max(base_roi, 0.01) * 100, 2),
+            "match_rate": round((exp_match_rate - base_match_rate) / max(base_match_rate, 0.01) * 100, 2),
+            "backlog": round((base_backlog - exp_backlog) / max(base_backlog, 1) * 100, 2),
+        },
     }
+
+
+def _emergency_strategies() -> List[str]:
+    return [
+        "策略 A：跨网格动态调度运力，优先向高缺口区域倾斜。
+",
+        "策略 B：发放 8 元膨胀补贴券，锁定高响应司机。
+",
+        "策略 C：缩短派单半径，叠加人工值守。
+",
+    ]
+
+
+def simulate_business_scenario(scenario: str) -> ScenarioSimulation:
+    if scenario not in SCENARIOS:
+        raise ValueError(f"Unsupported scenario: {scenario}")
+    records = _simulate_records(scenario)
+    total_demand = sum(r.demand for r in records)
+    total_supply = sum(r.supply for r in records)
+    total_matched = sum(r.matched for r in records)
+    backlog = sum(r.backlog for r in records)
+    punctuality_rate = round(sum(r.on_time for r in records) / max(total_matched, 1) * 100, 2)
+    subsidy_amount = round(sum(r.subsidy for r in records), 2)
+    supply_hours_increment = round(sum(r.supply_hours for r in records) - total_supply, 2)
+    core_roi = round(supply_hours_increment / max(subsidy_amount, 1.0), 2)
+    mape = _mape(records)
+    matched_rate = total_matched / max(total_demand, 1)
+    ab_metrics = _ab_metrics(records, scenario, subsidy_amount, matched_rate)
+    emergency_strategies = _emergency_strategies() if scenario == "异常天气状态" else []
+    geo_points = build_geo_points(scenario)
+    before_after_punctuality = {
+        "执行前": punctuality_rate,
+        "执行后": round(min(99.99, punctuality_rate + (6.5 if scenario == "异常天气状态" else 2.8 if scenario == "传统节假日" else 1.8)), 2),
+    }
+    return ScenarioSimulation(
+        scenario=scenario,
+        records=records,
+        total_demand=total_demand,
+        total_supply=total_supply,
+        total_matched=total_matched,
+        backlog=backlog,
+        punctuality_rate=punctuality_rate,
+        subsidy_amount=subsidy_amount,
+        supply_hours_increment=supply_hours_increment,
+        core_roi=core_roi,
+        mape=mape,
+        ab_metrics=ab_metrics,
+        emergency_strategies=emergency_strategies,
+        geo_points=geo_points,
+        before_after_punctuality=before_after_punctuality,
+    )
 
 
 def summarize_by_hour(records: List[HourlyRecord]) -> Dict[int, Dict[str, float]]:
@@ -177,65 +288,31 @@ def summarize_by_hour(records: List[HourlyRecord]) -> Dict[int, Dict[str, float]
     for hour in range(HOURS):
         subset = [r for r in records if r.hour == hour]
         summary[hour] = {
-            "demand_actual": round(sum(r.demand_actual for r in subset), 2),
-            "demand_pred": round(sum(r.demand_pred for r in subset), 2),
-            "supply": round(sum(r.supply for r in subset), 2),
-            "gap": round(sum(r.gap for r in subset), 2),
-            "unmet": round(sum(r.unmet_orders for r in subset), 2),
-            "rain_affected": sum(1 for r in subset if r.rain_event),
+            "demand": float(sum(r.demand for r in subset)),
+            "supply": float(sum(r.supply for r in subset)),
+            "matched": float(sum(r.matched for r in subset)),
+            "backlog": float(sum(r.backlog for r in subset)),
+            "on_time_rate": round(sum(r.on_time for r in subset) / max(sum(r.matched for r in subset), 1) * 100, 2),
         }
     return summary
 
 
-def print_report(records: List[HourlyRecord], mape: float, roi_metrics: Dict[str, float]) -> None:
-    hour_summary = summarize_by_hour(records)
-    total_demand = round(sum(r.demand_actual for r in records), 2)
-    total_supply = round(sum(r.supply for r in records), 2)
-    total_gap = round(sum(r.gap for r in records), 2)
-    total_unmet = round(sum(r.unmet_orders for r in records), 2)
-    rain_records = [r for r in records if r.rain_event]
-
+def scenario_report(simulation: ScenarioSimulation) -> None:
     print("=" * 72)
-    print("ISDP 核心数据模拟引擎 Demo")
+    print("ISDP 核心数据模拟引擎")
     print(f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"模拟网格数: {GRID_COUNT} | 模拟小时数: {HOURS}")
+    print(f"场景: {simulation.scenario}")
+    print(f"总需求: {simulation.total_demand}")
+    print(f"总供给: {simulation.total_supply}")
+    print(f"相对准时率: {simulation.punctuality_rate:.2f}%")
+    print(f"补贴金额: {simulation.subsidy_amount:.0f}")
+    print(f"核心 ROI: {simulation.core_roi:.2f}")
+    print(f"MAPE: {simulation.mape:.2f}%")
+    print("A/B 指标:")
+    for k, v in simulation.ab_metrics.items():
+        print(f"- {k}: {v}")
     print("=" * 72)
-    print(f"总需求量: {total_demand}")
-    print(f"总供给量: {total_supply}")
-    print(f"总供需缺口 Gap: {total_gap}")
-    print(f"总未满足订单: {total_unmet}")
-    print(f"需求预测 MAPE: {mape}%")
-    print("=" * 72)
-    print("A/B 测试 ROI 对比")
-    print(f"基准组 ROI: {roi_metrics['base_roi']}")
-    print(f"实验组 ROI: {roi_metrics['experiment_roi']}")
-    print(f"ROI 提升: {roi_metrics['roi_lift_pct']}%")
-    print(f"实验组增量收益: {roi_metrics['experiment_incremental_value']}")
-    print("=" * 72)
-
-    if rain_records:
-        sample = rain_records[0]
-        print("突发暴雨场景已触发")
-        print(
-            f"示例网格: {sample.grid_id} | 小时: {sample.hour} | 需求: {sample.demand_actual} | 供给: {sample.supply} | Gap: {sample.gap}"
-        )
-    print("=" * 72)
-    print("基础匹配策略摘要（前 6 个小时）")
-    for hour in range(6):
-        h = hour_summary[hour]
-        print(
-            f"Hour {hour:02d} | 需求 {h['demand_actual']:.2f} | 供给 {h['supply']:.2f} | Gap {h['gap']:.2f} | 未满足 {h['unmet']:.2f} | 暴雨网格数 {h['rain_affected']}"
-        )
-    print("=" * 72)
-
-
-def main() -> None:
-    records = simulate_hourly_data()
-    compute_gap_and_matching(records)
-    mape = calculate_mape(records)
-    roi_metrics = simulate_ab_roi(records)
-    print_report(records, mape, roi_metrics)
 
 
 if __name__ == "__main__":
-    main()
+    scenario_report(simulate_business_scenario("异常天气状态"))
