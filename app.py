@@ -220,13 +220,20 @@ with left:
             "Supply": [summary[h]["supply"] for h in range(HOURS)],
         }
     )
-    trend["Gap"] = trend["Supply"] - trend["Demand"]
-    trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
+    trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
+    trend["A2R"] = (98 + (trend["Supply"] - trend["Demand"]) * 0.05).clip(lower=72, upper=99.5)
+    trend["A2R"] = trend["A2R"].astype(float)
+    health_supply_ratio = trend.loc[
+        [summary[h]["on_time_rate"] >= 98 for h in range(HOURS)],
+        "Supply_Ratio",
+    ].dropna().mean()
+    if pd.isna(health_supply_ratio):
+        health_supply_ratio = trend["Supply_Ratio"].dropna().mean()
     gap_bars = alt.Chart(trend).mark_bar().encode(
         x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
-        y=alt.Y("Gap:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11), scale=alt.Scale(domain=[-500, 200])),
-        color=alt.condition(alt.datum.Gap < 0, alt.value("#fb7185"), alt.value("#f59e0b")),
-        tooltip=["hour:Q", alt.Tooltip("Gap:Q", title="Gap=Supply-Demand")],
+        y=alt.Y("Supply_Ratio:Q", title=None, axis=alt.Axis(title="供需比(供应/需求)", labelColor="#d8d29a", titleColor="#d8d29a", tickColor="#2c3c52", grid=False, labelFontSize=11), scale=alt.Scale(domain=[0, max(1.4, float(trend["Supply_Ratio"].max(skipna=True) or 1.4) * 1.1)])),
+        color=alt.condition(alt.datum.Supply_Ratio < 1, alt.value("#fb7185"), alt.value("#22c55e")),
+        tooltip=["hour:Q", alt.Tooltip("Supply_Ratio:Q", title="供需比(供应/需求)", format=".2f")],
     )
     demand_supply = alt.Chart(trend).transform_fold(["Demand", "Supply"], as_=["series", "value"]).mark_line(point=True, strokeWidth=2.8).encode(
         x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
@@ -239,7 +246,11 @@ with left:
         y=alt.Y("A2R:Q", title=None, axis=alt.Axis(title="A2R(%)", labelColor="#d8d29a", titleColor="#d8d29a", tickColor="#2c3c52", grid=False, labelFontSize=11), scale=alt.Scale(domain=[70, 100])),
         tooltip=["hour:Q", alt.Tooltip("A2R:Q", title="实时应答率")],
     )
-    trend_chart = (gap_bars + demand_supply + a2r_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
+    health_line = alt.Chart(pd.DataFrame({"health": [health_supply_ratio]})).mark_rule(color="#9ca3af", strokeDash=[6, 4], strokeWidth=2).encode(
+        y=alt.Y("health:Q", title=None, axis=alt.Axis(title="供需比(右轴)", labelColor="#d8d29a", titleColor="#d8d29a", tickColor="#2c3c52", grid=False, labelFontSize=11), scale=alt.Scale(domain=[0, max(1.4, float(trend["Supply_Ratio"].max(skipna=True) or 1.4) * 1.1)])),
+        tooltip=[alt.Tooltip("health:Q", title="健康供需比", format=".2f")],
+    )
+    trend_chart = (gap_bars + demand_supply + a2r_line + health_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
     st.altair_chart(trend_chart, use_container_width=True)
     st.markdown(
         '<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
