@@ -252,31 +252,64 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    st.markdown('<div class="panel"><div class="panel-title">高价值断链 Pydeck 3D 地图</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">区域热力监控图</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
     geo_df["backlog"] = (geo_df["weight"] * 18).round(0).astype(int)
     geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
     geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
-    geo_df["zone_name"] = "上海网格"
+    geo_df["zone_name"] = [f"一级网格-{i+1:02d}" for i in range(len(geo_df))]
+    geo_df["sub_zone"] = [f"二级网格-{i+1:02d}" for i in range(len(geo_df))]
     geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1200)
-    layer = pdk.Layer(
+    geo_df["fill_rgba"] = geo_df["backlog"].apply(
+        lambda x: [255, 75, 75, 200] if x >= 12 else ([255, 165, 0, 170] if x >= 6 else [255, 255, 255, 30])
+    )
+
+    # 补充灰度底图网格层，强化区域轮廓感
+    grid_points = []
+    for _, row in geo_df.iterrows():
+        for dx in (-0.02, 0, 0.02):
+            for dy in (-0.02, 0, 0.02):
+                grid_points.append(
+                    {
+                        "lon": row["lon"] + dx,
+                        "lat": row["lat"] + dy,
+                        "value": max(1, int(row["backlog"] * 0.2)),
+                    }
+                )
+    grid_df = pd.DataFrame(grid_points)
+
+    grid_layer = pdk.Layer(
+        "ScreenGridLayer",
+        data=grid_df,
+        get_position="[lon, lat]",
+        get_weight="value",
+        cell_size_pixels=55,
+        opacity=0.22,
+        color_range=[[30, 41, 59, 20], [71, 85, 105, 40], [148, 163, 184, 80], [251, 146, 60, 120], [239, 68, 68, 160]],
+        pickable=False,
+    )
+    scatter_layer = pdk.Layer(
         "ScatterplotLayer",
         data=geo_df,
         get_position="[lon, lat]",
         get_radius="radius",
         radius_scale=1,
-        radius_min_pixels=4,
+        radius_min_pixels=3,
         radius_max_pixels=18,
-        get_fill_color=[255, 75, 75, 200],
+        get_fill_color="fill_rgba",
+        get_line_color=[15, 23, 42],
+        line_width_min_pixels=1,
+        stroked=True,
+        filled=True,
         pickable=True,
         auto_highlight=True,
     )
     deck = pdk.Deck(
         map_style="mapbox://styles/mapbox/dark-v10",
         initial_view_state=pdk.ViewState(latitude=31.2304, longitude=121.4737, zoom=11, pitch=45),
-        layers=[layer],
+        layers=[grid_layer, scatter_layer],
         tooltip={
-            "html": "<div style='font-size:12px;line-height:1.5;color:#fff;'>📍 网格区域: {zone_name}<br/>📉 实时应答率: {a2r}%<br/>👥 积压排队单: {backlog}单<br/>💰 动态调度溢价: +${bonus}/单</div>",
+            "html": "<div style='font-size:12px;line-height:1.5;color:#fff;'>📍 网格区域: {zone_name}<br/>🧩 二级网格: {sub_zone}<br/>📉 实时应答率: {a2r}%<br/>👥 积压排队单: {backlog}单<br/>💰 动态调度溢价: +${bonus}/单</div>",
             "style": {"backgroundColor": "#11151c", "color": "#fff", "border": "1px solid #233549"},
         },
     )
