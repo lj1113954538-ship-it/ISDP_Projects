@@ -155,24 +155,29 @@ with header_left:
     st.markdown('<div class="title">ISDP 智能供需决策中心</div>', unsafe_allow_html=True)
 with header_right:
     st.markdown(
-        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.4; padding-top:4px;">数据更新时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} | 核心模式：一键闭环管控</div>',
+        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">数据更新时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}<br/>核心模式：一键闭环管控</div>',
         unsafe_allow_html=True,
     )
 
-badge_left, badge_right = st.columns([1.4, 1.0], vertical_alignment="center")
-with badge_left:
+badge_cols = st.columns(4)
+with badge_cols[0]:
     st.markdown(
-        "<div style='display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:2px 0 0 0;'>"
-        "<span class='badge'><span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444,0 0 14px #ef4444;animation:pulse 1.8s infinite;margin-right:8px;'></span>红绿灯预警</span>"
-        "<span class='badge'>智能防错</span>"
-        "<span class='badge'>一键下发</span>"
-        "<span class='badge'>复盘飞轮</span>"
-        "</div>",
+        "<div class='badge' style='width:100%; justify-content:flex-start;'><span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444,0 0 14px #ef4444;animation:pulse 1.8s infinite;margin-right:8px;'></span>红绿灯预警</div>",
         unsafe_allow_html=True,
     )
-with badge_right:
+with badge_cols[1]:
+    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>智能防错</div>", unsafe_allow_html=True)
+with badge_cols[2]:
+    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>一键下发</div>", unsafe_allow_html=True)
+with badge_cols[3]:
+    st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>复盘飞轮</div>", unsafe_allow_html=True)
+
+status_cols = st.columns([1.7, 1.0], vertical_alignment="center")
+with status_cols[0]:
+    st.markdown('<div style="height:1px;"></div>', unsafe_allow_html=True)
+with status_cols[1]:
     st.markdown(
-        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.4; padding-top:6px;">当前场景：{scenario} | MAPE：{simulation.mape:.2f}%</div>',
+        f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">当前场景：{scenario} | MAPE：{simulation.mape:.2f}%</div>',
         unsafe_allow_html=True,
     )
 
@@ -216,10 +221,10 @@ with left:
                 tooltip=["hour:Q", "series:N", "value:Q"],
             )
             .properties(height=320, width="container")
-            .configure_view(strokeOpacity=0)
-            .configure(background="#11151c")
+            .configure_view(strokeOpacity=0, fill="#11151c")
+            .configure(background="transparent")
             .configure_axis(domainColor="#2a394c", tickColor="#2a394c")
-            .configure_legend(background="#11151c")
+            .configure_legend(fillColor="#11151c", strokeColor="#233549")
         )
         st.altair_chart(trend_chart, use_container_width=True)
         st.markdown('<div class="panel-note">按小时展示 Demand vs Supply，统一暗色背景避免白色斑块。</div>', unsafe_allow_html=True)
