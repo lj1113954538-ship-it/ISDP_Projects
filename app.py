@@ -31,45 +31,6 @@ st.markdown(
         background: linear-gradient(180deg, var(--bg0) 0%, var(--bg1) 55%, #030712 100%);
         color: var(--text);
     }
-    .stApp .stContainer, .stApp .stMarkdown, .stApp .stVerticalBlock { overflow: visible; }
-    .chart-shell {
-        position: relative;
-        background: #11151c;
-        border: 1px solid #233549;
-        border-radius: 6px;
-        padding: 12px 12px 10px 12px;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.24);
-    }
-    .chart-alert-band {
-        position:absolute;
-        left:12px;
-        right:12px;
-        top:82px;
-        height:128px;
-        background: rgba(239,68,68,0.08);
-        border: 1px solid rgba(239,68,68,0.18);
-        border-radius: 4px;
-        pointer-events:none;
-        z-index:1;
-    }
-    .chart-budget {
-        margin-top: 8px;
-        color:#cbd5e1;
-        font-size:0.84rem;
-    }
-    .chart-budget-bar {
-        height:8px;
-        background:#0f1724;
-        border:1px solid #233549;
-        border-radius:999px;
-        overflow:hidden;
-        margin-top:8px;
-    }
-    .chart-budget-fill {
-        width:24.5%;
-        height:100%;
-        background:linear-gradient(90deg, #22c55e, #f59e0b);
-    }
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, rgba(8,16,30,0.99), rgba(4,9,18,0.99));
         border-right: 1px solid rgba(148,163,184,0.12);
@@ -240,104 +201,107 @@ with k5:
         st.markdown('<div class="roi-warn">正常</div>', unsafe_allow_html=True)
 
 left, right = st.columns([1, 1])
-st.markdown('<div style="background-color: #11151c; border: 1px solid #233549; padding: 20px; border-radius: 8px; margin-bottom: 25px; width: 100%;">', unsafe_allow_html=True)
-st.markdown('<div style="font-size: 1.25rem; font-weight: bold; color: #ffffff; margin-bottom: 20px; border-left: 4px solid #00f2fe; padding-left: 10px; line-height: 1;">📊 分时供需趋势</div>', unsafe_allow_html=True)
-st.markdown('<div style="height:400px;">', unsafe_allow_html=True)
-trend = pd.DataFrame(
-    {
-        "hour": list(range(HOURS)),
-        "Demand": [summary[h]["demand"] for h in range(HOURS)],
-        "Supply": [summary[h]["supply"] for h in range(HOURS)],
-    }
-)
-diff = trend.assign(Gap=(trend["Demand"] - trend["Supply"]).clip(lower=0))
-base = alt.Chart(trend).properties(height=360, width="container")
-alert_band = alt.Chart(pd.DataFrame({"x1": [9], "x2": [13], "y1": [0], "y2": [max(trend["Demand"]) * 1.15]})).mark_rect(color="#ef4444", opacity=0.08).encode(x="x1:Q", x2="x2:Q", y="y1:Q", y2="y2:Q")
-gap_area = alt.Chart(diff).mark_area(color="#ef4444", opacity=0.18).encode(
-    x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
-    y=alt.Y("Gap:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
-    tooltip=["hour:Q", alt.Tooltip("Gap:Q", title="供需断链缺口")],
-)
-lines = base.mark_line(point=True, strokeWidth=2.8).encode(
-    x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
-    y=alt.Y("value:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
-    color=alt.Color("series:N", scale=alt.Scale(domain=["Demand", "Supply"], range=["#67e8f9", "#86efac"]), legend=alt.Legend(title=None, orient="top-right", labelColor="#c9d7ea", labelFontSize=11, symbolType="stroke")),
-    tooltip=["hour:Q", "series:N", "value:Q"],
-).transform_fold(["Demand", "Supply"], as_=["series", "value"])
-trend_chart = (alert_band + gap_area + lines).configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
-st.altair_chart(trend_chart, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">'
-    '<div style="color:#cbd5e1; font-size:0.84rem;">💰 今日补贴总额：<span style="color:#ffffff; font-weight:700;">$2,447</span></div>'
-    '<div style="color:#cbd5e1; font-size:0.84rem;">剩余可用预算：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
-    '</div>'
-    '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
-    unsafe_allow_html=True,
-)
-st.markdown('</div>', unsafe_allow_html=True)
+with left:
+    with st.container():
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">分时供需趋势</div>', unsafe_allow_html=True)
+        trend = pd.DataFrame(
+            {
+                "hour": list(range(HOURS)),
+                "Demand": [summary[h]["demand"] for h in range(HOURS)],
+                "Supply": [summary[h]["supply"] for h in range(HOURS)],
+            }
+        )
+        diff = trend.assign(Gap=(trend["Demand"] - trend["Supply"]).clip(lower=0))
+        base = alt.Chart(trend).properties(height=400, width="container")
+        alert_band = alt.Chart(pd.DataFrame({"x1": [9], "x2": [13], "y1": [0], "y2": [max(trend["Demand"]) * 1.15]})).mark_rect(color="#ef4444", opacity=0.08).encode(x="x1:Q", x2="x2:Q", y="y1:Q", y2="y2:Q")
+        gap_area = alt.Chart(diff).mark_area(color="#ef4444", opacity=0.18).encode(
+            x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
+            y=alt.Y("Gap:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
+            tooltip=["hour:Q", alt.Tooltip("Gap:Q", title="供需断链缺口")],
+        )
+        lines = base.mark_line(point=True, strokeWidth=2.8).encode(
+            x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
+            y=alt.Y("value:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
+            color=alt.Color("series:N", scale=alt.Scale(domain=["Demand", "Supply"], range=["#67e8f9", "#86efac"]), legend=alt.Legend(title=None, orient="top-right", labelColor="#c9d7ea", labelFontSize=11, symbolType="stroke")),
+            tooltip=["hour:Q", "series:N", "value:Q"],
+        ).transform_fold(["Demand", "Supply"], as_=["series", "value"])
+        trend_chart = (alert_band + gap_area + lines).configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
+        st.altair_chart(trend_chart, use_container_width=True)
+        st.markdown(
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">'
+            '<div style="color:#cbd5e1; font-size:0.84rem;">💰 今日补贴总额：<span style="color:#ffffff; font-weight:700;">$2,447</span></div>'
+            '<div style="color:#cbd5e1; font-size:0.84rem;">剩余可用预算：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
+            '</div>'
+            '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div style="background-color: #11151c; border: 1px solid #233549; padding: 20px; border-radius: 8px; margin-bottom: 25px; width: 100%;">', unsafe_allow_html=True)
-st.markdown('<div style="font-size: 1.25rem; font-weight: bold; color: #ffffff; margin-bottom: 20px; border-left: 4px solid #00f2fe; padding-left: 10px; line-height: 1;">📍 地理空间热力联动</div>', unsafe_allow_html=True)
-geo_df = pd.DataFrame(simulation.geo_points).copy()
-geo_df["缺口值"] = (geo_df["weight"] * 12).round(1)
-geo_df["建议加价"] = (geo_df["weight"] * 1.28).round(1)
-geo_df["建议运力"] = (geo_df["weight"] * 3.6).round(0)
-geo_df["颜色深度"] = geo_df["weight"]
-geo_df["lat"] = geo_df["lat"] + 0.0001 * (geo_df.index % 2)
-geo_df["lon"] = geo_df["lon"] + 0.0001 * (geo_df.index % 3)
-st.markdown('<div style="height:400px;">', unsafe_allow_html=True)
-st.scatter_chart(geo_df, x="lon", y="lat", size="缺口值", color="颜色深度", use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+with right:
+    with st.container():
+        st.markdown('<div class="panel">', unsafe_allow_html=True)
+        st.markdown('<div class="panel-title">地理空间热力联动</div>', unsafe_allow_html=True)
+        geo_df = pd.DataFrame(simulation.geo_points).copy()
+        geo_df["缺口值"] = (geo_df["weight"] * 12).round(1)
+        geo_df["建议加价"] = (geo_df["weight"] * 1.28).round(1)
+        geo_df["建议运力"] = (geo_df["weight"] * 3.6).round(0)
+        geo_df["颜色深度"] = geo_df["weight"]
+        geo_df["lat"] = geo_df["lat"] + 0.0001 * (geo_df.index % 2)
+        geo_df["lon"] = geo_df["lon"] + 0.0001 * (geo_df.index % 3)
+        st.scatter_chart(geo_df, x="lon", y="lat", size="缺口值", color="颜色深度", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('<div style="background-color: #11151c; border: 1px solid #233549; padding: 20px; border-radius: 8px; margin-bottom: 25px; width: 100%;">', unsafe_allow_html=True)
-st.markdown('<div style="font-size: 1.25rem; font-weight: bold; color: #ffffff; margin-bottom: 20px; border-left: 4px solid #00f2fe; padding-left: 10px; line-height: 1;">📊 AI 决策工作台</div>', unsafe_allow_html=True)
-if run_agent:
-    st.session_state.agent_ready = True
-    with st.status("AI agent 正在推理", expanded=True) as status:
-        st.write("🚨 【异常识别】监测到区域供给缺口。")
-        time.sleep(0.3)
-        st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
-        time.sleep(0.3)
-        st.write("💡 【策略生成】建议每单补贴上调 X 元。")
-        time.sleep(0.3)
-        st.write("✅ 【方案确认】等待人工确认后下发执行。")
-        status.update(label="AI agent 推理完成", state="complete")
+with st.container():
+    st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">AI 决策工作台</div>', unsafe_allow_html=True)
+    if run_agent:
+        st.session_state.agent_ready = True
+        with st.status("AI agent 正在推理", expanded=True) as status:
+            st.write("🚨 【异常识别】监测到区域供给缺口。")
+            time.sleep(0.3)
+            st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
+            time.sleep(0.3)
+            st.write("💡 【策略生成】建议每单补贴上调 X 元。")
+            time.sleep(0.3)
+            st.write("✅ 【方案确认】等待人工确认后下发执行。")
+            status.update(label="AI agent 推理完成", state="complete")
 
-if st.session_state.agent_ready:
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        st.button("⚡ 同意 AI 策略，一键下发执行", use_container_width=True, type="primary")
-    with c2:
-        if st.button("确认执行", use_container_width=True):
-            st.session_state.strategy_confirmed = True
-            st.success("✅ 执行成功 | 调度令已下发至 ERP (单号: ISDP-2026-XXXX)")
+    if st.session_state.agent_ready:
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.button("⚡ 同意 AI 策略，一键下发执行", use_container_width=True, type="primary")
+        with c2:
+            if st.button("确认执行", use_container_width=True):
+                st.session_state.strategy_confirmed = True
+                st.markdown('<div style="background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
-if st.session_state.strategy_confirmed:
-    before = simulation.before_after_punctuality["执行前"]
-    after = simulation.before_after_punctuality["执行后"]
-    b1, b2 = st.columns(2)
-    with b1:
-        st.metric("执行前准时率", f"{before:.2f}%")
-    with b2:
-        st.metric("执行后准时率", f"{after:.2f}%", f"+{after - before:.2f}%")
-st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.strategy_confirmed:
+        before = simulation.before_after_punctuality["执行前"]
+        after = simulation.before_after_punctuality["执行后"]
+        b1, b2 = st.columns(2)
+        with b1:
+            st.metric("执行前准时率", f"{before:.2f}%")
+        with b2:
+            st.metric("执行后准时率", f"{after:.2f}%", f"+{after - before:.2f}%")
 
-st.markdown('<div style="background-color: #11151c; border: 1px solid #233549; padding: 20px; border-radius: 8px; margin-bottom: 25px; width: 100%;">', unsafe_allow_html=True)
-st.markdown('<div style="font-size: 1.25rem; font-weight: bold; color: #ffffff; margin-bottom: 20px; border-left: 4px solid #00f2fe; padding-left: 10px; line-height: 1;">📊 AB 实验指标面板</div>', unsafe_allow_html=True)
-ab = simulation.ab_metrics
-结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
-st.info(结论)
-ab_df = pd.DataFrame(
-    {
-        "指标": ["ROI", "匹配率", "压单量"],
-        "基准组": [ab["基准组"]["roi"], ab["基准组"]["match_rate"], ab["基准组"]["backlog"]],
-        "实验组": [ab["实验组"]["roi"], ab["实验组"]["match_rate"], ab["实验组"]["backlog"]],
-        "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
-    }
-)
-st.dataframe(ab_df, use_container_width=True, hide_index=True)
-st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with st.container():
+    st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
+    st.markdown('<div class="panel-title">AB 实验指标面板</div>', unsafe_allow_html=True)
+    ab = simulation.ab_metrics
+    结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
+    st.info(结论)
+    ab_df = pd.DataFrame(
+        {
+            "指标": ["ROI", "匹配率", "压单量"],
+            "基准组": [ab["基准组"]["roi"], ab["基准组"]["match_rate"], ab["基准组"]["backlog"]],
+            "实验组": [ab["实验组"]["roi"], ab["实验组"]["match_rate"], ab["实验组"]["backlog"]],
+            "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
+        }
+    )
+    st.dataframe(ab_df, use_container_width=True, hide_index=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"场景：{scenario} ｜ 底层数据与前端展示已严格联动。")
