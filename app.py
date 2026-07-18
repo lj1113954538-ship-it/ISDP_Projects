@@ -43,7 +43,13 @@ st.markdown(
         border-radius: 8px;
         padding: 12px 12px 8px 12px;
         box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+        min-height: 125px !important;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
+    [data-testid="stTable"] th, [data-testid="stTable"] td,
+    [data-testid="stDataFrame"] td, .stDataFrame div { text-align: center !important; justify-content: center !important; }
     [data-testid="stMetricValue"] { color: #ffffff; }
     .topbar {
         display:flex;
@@ -159,8 +165,8 @@ with header_right:
         unsafe_allow_html=True,
     )
 
-badge_row_left, badge_row_right = st.columns([1.7, 1.0], vertical_alignment="center")
-with badge_row_left:
+header_meta_left, header_meta_right = st.columns([1.7, 1.0], vertical_alignment="center")
+with header_meta_left:
     b1, b2, b3, b4 = st.columns(4)
     with b1:
         st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'><span style='display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444,0 0 14px #ef4444;animation:pulse 1.8s infinite;margin-right:8px;'></span>实时供需断链预警</div>", unsafe_allow_html=True)
@@ -170,7 +176,7 @@ with badge_row_left:
         st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>自动化调度令流转</div>", unsafe_allow_html=True)
     with b4:
         st.markdown("<div class='badge' style='width:100%; justify-content:flex-start;'>策略效能归因复盘</div>", unsafe_allow_html=True)
-with badge_row_right:
+with header_meta_right:
     st.markdown(
         f'<div style="text-align:right; color:#8b949e; font-size:0.82rem; line-height:1.3;">当前场景：{scenario} | MAPE：{simulation.mape:.2f}%</div>',
         unsafe_allow_html=True,
@@ -198,7 +204,7 @@ left, right = st.columns([1, 1])
 with left:
     with st.container():
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">分时供需趋势</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 1.2rem; font-weight: bold; color: #ffffff; margin-bottom: 12px;">分时供需趋势</div>', unsafe_allow_html=True)
         trend = pd.DataFrame(
             {
                 "hour": list(range(HOURS)),
@@ -223,11 +229,11 @@ with left:
         )
         st.altair_chart(trend_chart, use_container_width=True)
         st.markdown(
-            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px;">'
-            '<div class="panel-note" style="margin-top:0;">今日补贴总额：$2447</div>'
-            '<div class="panel-note" style="margin-top:0;">剩余可用预算：$7553 <span style="color:#67e8f9;">(预算水位：24.5%)</span></div>'
+            '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">'
+            '<div style="color:#cbd5e1; font-size:0.84rem;">💰 今日补贴总额：<span style="color:#ffffff; font-weight:700;">$2,447</span></div>'
+            '<div style="color:#cbd5e1; font-size:0.84rem;">剩余可用预算：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
             '</div>'
-            '<div style="height:8px; background:#0f1724; border:1px solid #233549; border-radius:999px; overflow:hidden; margin-top:6px;">'
+            '<div style="height:8px; background:#0f1724; border:1px solid #233549; border-radius:999px; overflow:hidden; margin-top:8px;">'
             '<div style="width:24.5%; height:100%; background:linear-gradient(90deg, #22c55e, #f59e0b);"></div>'
             '</div>',
             unsafe_allow_html=True,
@@ -237,15 +243,14 @@ with left:
 with right:
     with st.container():
         st.markdown('<div class="panel">', unsafe_allow_html=True)
-        st.markdown('<div class="panel-title">地理空间热力联动</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 1.2rem; font-weight: bold; color: #ffffff; margin-bottom: 12px;">地理空间热力联动</div>', unsafe_allow_html=True)
         geo_df = pd.DataFrame(simulation.geo_points)
         st.map(geo_df.rename(columns={"lat": "latitude", "lon": "longitude"}))
-        st.markdown('<div class="panel-note">日常：均匀分散；异常天气：写字楼/商圈聚集；节假日：景区/高铁站/机场集中。</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 with st.container():
     st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">AI 决策工作台</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size: 1.2rem; font-weight: bold; color: #ffffff; margin-bottom: 12px;">AI 决策工作台</div>', unsafe_allow_html=True)
     if run_agent:
         st.session_state.agent_ready = True
         with st.status("AI agent 正在推理", expanded=True) as status:
@@ -265,7 +270,7 @@ with st.container():
         with c2:
             if st.button("确认执行", use_container_width=True):
                 st.session_state.strategy_confirmed = True
-                st.success("✅ 执行成功 | 调度令已下发至 ERP (单号: ISDP-2026-XXXX)")
+                st.markdown('<div style="background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
     if st.session_state.strategy_confirmed:
         before = simulation.before_after_punctuality["执行前"]
@@ -280,7 +285,7 @@ with st.container():
 
 with st.container():
     st.markdown('<div class="panel" style="margin-top:0.5rem;">', unsafe_allow_html=True)
-    st.markdown('<div class="panel-title">AB 实验指标面板</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size: 1.2rem; font-weight: bold; color: #ffffff; margin-bottom: 12px;">AB 实验指标面板</div>', unsafe_allow_html=True)
     ab = simulation.ab_metrics
     结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
     st.info(结论)
