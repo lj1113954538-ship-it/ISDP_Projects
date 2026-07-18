@@ -263,6 +263,17 @@ with right:
     geo_df["fill_rgba"] = geo_df["backlog"].apply(
         lambda x: [255, 75, 75, 210] if x >= 12 else ([255, 165, 0, 180] if x >= 6 else [255, 255, 255, 30])
     )
+    geo_df["tri_size"] = (geo_df["backlog"] * 0.00055).clip(0.00045, 0.0018)
+    geo_df["triangles"] = geo_df.apply(
+        lambda row: [
+            [
+                [row["lon"], row["lat"] + row["tri_size"]],
+                [row["lon"] - row["tri_size"] * 0.9, row["lat"] - row["tri_size"] * 0.85],
+                [row["lon"] + row["tri_size"] * 0.9, row["lat"] - row["tri_size"] * 0.85],
+            ]
+        ],
+        axis=1,
+    )
 
     # 补充灰度底图网格层，强化区域轮廓感
     grid_points = []
@@ -289,13 +300,9 @@ with right:
         pickable=False,
     )
     scatter_layer = pdk.Layer(
-        "ScatterplotLayer",
+        "PolygonLayer",
         data=geo_df,
-        get_position="[lon, lat]",
-        get_radius="radius",
-        radius_scale=1,
-        radius_min_pixels=3,
-        radius_max_pixels=22,
+        get_polygon="triangles",
         get_fill_color="fill_rgba",
         get_line_color=[15, 23, 42],
         line_width_min_pixels=1,
@@ -303,7 +310,6 @@ with right:
         filled=True,
         pickable=True,
         auto_highlight=True,
-        get_shape='"triangle"',
     )
     deck = pdk.Deck(
         map_style="mapbox://styles/mapbox/dark-v10",
