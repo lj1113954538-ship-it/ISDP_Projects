@@ -320,20 +320,12 @@ st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10
 ab = simulation.ab_metrics
 结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
 st.info(结论)
-ab_df = pd.DataFrame(
-    {
-        "指标": ["ROI", "匹配率", "压单量"],
-        "基准组": [ab["基准组"]["roi"], ab["基准组"]["match_rate"], int(ab["基准组"]["backlog"])],
-        "实验组": [ab["实验组"]["roi"], ab["实验组"]["match_rate"], int(ab["实验组"]["backlog"])],
-        "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
-    }
-)
 ab_display = pd.DataFrame(
     {
-        "指标": ab_df["指标"],
-        "基准组": [f"{ab_df.loc[0, '基准组']:.2f}", f"{ab_df.loc[1, '基准组']:.2f}%", f"{ab_df.loc[2, '基准组']:,d}"],
-        "实验组": [f"{ab_df.loc[0, '实验组']:.2f}", f"{ab_df.loc[1, '实验组']:.2f}%", f"{ab_df.loc[2, '实验组']:,d}"],
-        "提升率": [f"{ab_df.loc[0, '提升率']:.2f}%", f"{ab_df.loc[1, '提升率']:.2f}%", f"{ab_df.loc[2, '提升率']:.2f}%"],
+        "指标": ["ROI", "匹配率", "压单量"],
+        "基准组": [f"{ab['基准组']['roi']:.2f}", f"{ab['基准组']['match_rate']:.2f}%", f"{int(ab['基准组']['backlog'])}"],
+        "实验组": [f"{ab['实验组']['roi']:.2f}", f"{ab['实验组']['match_rate']:.2f}%", f"{int(ab['实验组']['backlog'])}"],
+        "提升率": [f"{ab['提升率']['roi']:.2f}%", f"{ab['提升率']['match_rate']:.2f}%", f"{ab['提升率']['backlog']:.2f}%"],
     }
 )
 ab_style = ab_display.style.set_table_styles(
