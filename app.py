@@ -5,6 +5,7 @@ from datetime import datetime
 
 import altair as alt
 import pandas as pd
+import pydeck as pdk
 import streamlit as st
 
 from isdp_data_simulator_validation import HOURS, SCENARIOS, simulate_business_scenario, summarize_by_hour
@@ -201,28 +202,39 @@ with k5:
 
 left, right = st.columns([1, 1])
 with left:
-    st.markdown('<div class="panel"><div class="panel-title">分时供需趋势</div>', unsafe_allow_html=True)
-    trend = pd.DataFrame({"hour": list(range(HOURS)), "Demand": [summary[h]["demand"] for h in range(HOURS)], "Supply": [summary[h]["supply"] for h in range(HOURS)]})
-    diff = trend.assign(Gap=(trend["Demand"] - trend["Supply"]).clip(lower=0))
-    base = alt.Chart(trend).properties(height=400, width="container")
-    alert_band = alt.Chart(pd.DataFrame({"x1": [9], "x2": [13], "y1": [0], "y2": [max(trend["Demand"]) * 1.15]})).mark_rect(color="#ef4444", opacity=0.08).encode(x="x1:Q", x2="x2:Q", y="y1:Q", y2="y2:Q")
-    gap_area = alt.Chart(diff).mark_area(color="#ef4444", opacity=0.18).encode(
-        x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
-        y=alt.Y("Gap:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
-        tooltip=["hour:Q", alt.Tooltip("Gap:Q", title="供需断链缺口")],
+    st.markdown('<div class="panel"><div class="panel-title">分时供需错配与履约健康度</div>', unsafe_allow_html=True)
+    trend = pd.DataFrame(
+        {
+            "hour": list(range(HOURS)),
+            "Demand": [summary[h]["demand"] for h in range(HOURS)],
+            "Supply": [summary[h]["supply"] for h in range(HOURS)],
+        }
     )
-    lines = base.mark_line(point=True, strokeWidth=2.8).encode(
+    trend["Gap"] = trend["Supply"] - trend["Demand"]
+    trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
+    gap_bars = alt.Chart(trend).mark_bar().encode(
+        x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
+        y=alt.Y("Gap:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11), scale=alt.Scale(domain=[-500, 200])),
+        color=alt.condition(alt.datum.Gap < 0, alt.value("#fb7185"), alt.value("#f59e0b")),
+        tooltip=["hour:Q", alt.Tooltip("Gap:Q", title="Gap=Supply-Demand")],
+    )
+    demand_supply = alt.Chart(trend).transform_fold(["Demand", "Supply"], as_=["series", "value"]).mark_line(point=True, strokeWidth=2.8).encode(
         x=alt.X("hour:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=False, labelFontSize=11)),
         y=alt.Y("value:Q", title=None, axis=alt.Axis(labelColor="#b9c9da", tickColor="#2c3c52", grid=True, gridColor="#1b2734", labelFontSize=11)),
         color=alt.Color("series:N", scale=alt.Scale(domain=["Demand", "Supply"], range=["#67e8f9", "#86efac"]), legend=alt.Legend(title=None, orient="top-right", labelColor="#c9d7ea", labelFontSize=11, symbolType="stroke")),
         tooltip=["hour:Q", "series:N", "value:Q"],
-    ).transform_fold(["Demand", "Supply"], as_=["series", "value"])
-    trend_chart = (alert_band + gap_area + lines).configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
+    )
+    a2r_line = alt.Chart(trend).mark_line(color="#f5d76e", strokeWidth=2.6, point=True).encode(
+        x=alt.X("hour:Q", title=None),
+        y=alt.Y("A2R:Q", title=None, axis=alt.Axis(title="A2R(%)", labelColor="#d8d29a", titleColor="#d8d29a", tickColor="#2c3c52", grid=False, labelFontSize=11), scale=alt.Scale(domain=[70, 100])),
+        tooltip=["hour:Q", alt.Tooltip("A2R:Q", title="实时应答率")],
+    )
+    trend_chart = (gap_bars + demand_supply + a2r_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
     st.altair_chart(trend_chart, use_container_width=True)
     st.markdown(
-        '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px;">'
-        '<div style="color:#cbd5e1; font-size:0.84rem;">💰 今日补贴总额：<span style="color:#ffffff; font-weight:700;">$2,447</span></div>'
-        '<div style="color:#cbd5e1; font-size:0.84rem;">剩余可用预算：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
+        '<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
+        '<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">$2,447</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
+        '<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">$1.18</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">1.65</span></div>'
         '</div>'
         '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
         unsafe_allow_html=True,
@@ -230,15 +242,35 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    st.markdown('<div class="panel"><div class="panel-title">地理空间热力联动</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">高价值断链 Pydeck 3D 地图</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
-    geo_df["缺口值"] = (geo_df["weight"] * 12).round(1)
-    geo_df["建议加价"] = (geo_df["weight"] * 1.28).round(1)
-    geo_df["建议运力"] = (geo_df["weight"] * 3.6).round(0)
-    geo_df["颜色深度"] = geo_df["weight"]
-    geo_df["lat"] = geo_df["lat"] + 0.0001 * (geo_df.index % 2)
-    geo_df["lon"] = geo_df["lon"] + 0.0001 * (geo_df.index % 3)
-    st.scatter_chart(geo_df, x="lon", y="lat", size="缺口值", color="颜色深度", use_container_width=True)
+    geo_df["backlog"] = (geo_df["weight"] * 18).round(0).astype(int)
+    geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
+    geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
+    geo_df["zone_name"] = "上海网格"
+    geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1200)
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=geo_df,
+        get_position="[lon, lat]",
+        get_radius="radius",
+        radius_scale=1,
+        radius_min_pixels=4,
+        radius_max_pixels=18,
+        get_fill_color=[255, 75, 75, 200],
+        pickable=True,
+        auto_highlight=True,
+    )
+    deck = pdk.Deck(
+        map_style="mapbox://styles/mapbox/dark-v10",
+        initial_view_state=pdk.ViewState(latitude=31.2304, longitude=121.4737, zoom=11, pitch=45),
+        layers=[layer],
+        tooltip={
+            "html": "<div style='font-size:12px;line-height:1.5;color:#fff;'>📍 网格区域: {zone_name}<br/>📉 实时应答率: {a2r}%<br/>👥 积压排队单: {backlog}单<br/>💰 动态调度溢价: +${bonus}/单</div>",
+            "style": {"backgroundColor": "#11151c", "color": "#fff", "border": "1px solid #233549"},
+        },
+    )
+    st.pydeck_chart(deck, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AI 决策工作台</div>', unsafe_allow_html=True)
