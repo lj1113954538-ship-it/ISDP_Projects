@@ -328,25 +328,13 @@ ab_df = pd.DataFrame(
         "提升率": [ab["提升率"]["roi"], ab["提升率"]["match_rate"], ab["提升率"]["backlog"]],
     }
 )
-st.markdown(
-    """
-<style>
-[data-testid="stDataFrame"] thead th,
-[data-testid="stDataFrame"] tbody td,
-[data-testid="stTable"] th,
-[data-testid="stTable"] td {
-    text-align: center !important;
-}
-[data-testid="stDataFrame"] div[role="columnheader"],
-[data-testid="stDataFrame"] div[role="gridcell"] {
-    justify-content: center !important;
-    text-align: center !important;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-st.dataframe(ab_df, use_container_width=True, hide_index=True)
+ab_style = ab_df.style.set_table_styles(
+    [
+        {"selector": "th", "props": [("text-align", "center")]},
+        {"selector": "td", "props": [("text-align", "center")]},
+    ]
+).set_properties(**{"text-align": "center"})
+st.table(ab_style)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.caption(f"场景：{scenario} ｜ 底层数据与前端展示已严格联动。")
