@@ -51,6 +51,16 @@ st.markdown(
     }
     [data-testid="stTable"] th, [data-testid="stTable"] td,
     [data-testid="stDataFrame"] td, .stDataFrame div { text-align: center !important; justify-content: center !important; }
+    [data-testid="stDataFrame"] thead th,
+    [data-testid="stDataFrame"] tbody td {
+        text-align: center !important;
+        justify-content: center !important;
+    }
+    [data-testid="stDataFrame"] div[role="columnheader"],
+    [data-testid="stDataFrame"] div[role="gridcell"] {
+        text-align: center !important;
+        justify-content: center !important;
+    }
     [data-testid="stMetricValue"] { color: #ffffff; }
     .topbar {
         display:flex;
@@ -202,6 +212,14 @@ with k5:
 
 left, right = st.columns([1, 1])
 with left:
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("🚨 当前供需比(S/D)", "0.72", "-0.15 (极度紧缺)")
+    with m2:
+        st.metric("📉 实时缺单量", "-1,744 单", "缺口扩大中")
+    with m3:
+        st.metric("🎯 当前战术核心", "黄浦/徐汇爆单", "建议开启动态加价")
+
     st.markdown('<div class="panel"><div class="panel-title">分时供需错配与履约健康度</div>', unsafe_allow_html=True)
     trend = pd.DataFrame(
         {
@@ -229,7 +247,7 @@ with left:
         y=alt.Y("A2R:Q", title=None, axis=alt.Axis(title="A2R(%)", labelColor="#d8d29a", titleColor="#d8d29a", tickColor="#2c3c52", grid=False, labelFontSize=11), scale=alt.Scale(domain=[70, 100])),
         tooltip=["hour:Q", alt.Tooltip("A2R:Q", title="实时应答率")],
     )
-    trend_chart = (gap_bars + demand_supply + a2r_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
+    trend_chart = (gap_bars + demand_supply + a2r_line).resolve_scale(y="independent").properties(height=320, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
     st.altair_chart(trend_chart, use_container_width=True)
     st.markdown(
         '<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
@@ -242,14 +260,25 @@ with left:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
-    st.markdown('<div class="panel"><div class="panel-title">高价值断链 Pydeck 3D 地图</div>', unsafe_allow_html=True)
+    st.markdown('<div class="panel"><div class="panel-title">全貌底图 + 异常网格高亮</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
     geo_df["backlog"] = (geo_df["weight"] * 18).round(0).astype(int)
     geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
     geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
-    geo_df["zone_name"] = "上海网格"
+    geo_df["zone_name"] = geo_df.index.to_series().map(lambda i: ["黄浦", "徐汇", "静安", "浦东", "虹口", "杨浦", "长宁", "普陀"][i % 8])
     geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1200)
+    geo_df["fill"] = geo_df["backlog"].apply(lambda x: [255, 75, 75, 200] if x > geo_df["backlog"].median() else [120, 255, 160, 110])
     layer = pdk.Layer(
+        "ScreenGridLayer",
+        data=geo_df,
+        get_position="[lon, lat]",
+        get_weight="backlog",
+        cell_size_pixels=90,
+        opacity=0.75,
+        extruded=True,
+        coverage=1,
+    )
+    scatter = pdk.Layer(
         "ScatterplotLayer",
         data=geo_df,
         get_position="[lon, lat]",
@@ -264,7 +293,7 @@ with right:
     deck = pdk.Deck(
         map_style="mapbox://styles/mapbox/dark-v10",
         initial_view_state=pdk.ViewState(latitude=31.2304, longitude=121.4737, zoom=11, pitch=45),
-        layers=[layer],
+        layers=[layer, scatter],
         tooltip={
             "html": "<div style='font-size:12px;line-height:1.5;color:#fff;'>📍 网格区域: {zone_name}<br/>📉 实时应答率: {a2r}%<br/>👥 积压排队单: {backlog}单<br/>💰 动态调度溢价: +${bonus}/单</div>",
             "style": {"backgroundColor": "#11151c", "color": "#fff", "border": "1px solid #233549"},
