@@ -131,6 +131,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 显式管理确认执行的持久状态
 if "scenario" not in st.session_state:
     st.session_state.scenario = "日常正常状态"
 if "agent_ready" not in st.session_state:
@@ -142,11 +143,22 @@ if "op_mode" not in st.session_state:
 
 with st.sidebar:
     st.markdown("### ISDP 调度台")
+    # 切换场景时重置执行状态，保证逻辑干净
+    prev_scene = st.session_state.scenario
     scenario = st.selectbox("场景选择", list(SCENARIOS.keys()), index=list(SCENARIOS.keys()).index(st.session_state.scenario))
+    if scenario != prev_scene:
+        st.session_state.strategy_confirmed = False
+        st.session_state.agent_ready = False
     st.session_state.scenario = scenario
+    
     supply_val = st.slider("运力调度值", 0, 100, int(st.session_state.op_mode["运力"]))
     subsidy_val = st.slider("补贴投放值", 0, 100, int(st.session_state.op_mode["补贴"]))
+    
+    # 拖动滑块时如果调整了补贴，自动重置执行状态，允许用户重新确认
+    if {"运力": supply_val, "补贴": subsidy_val} != st.session_state.op_mode:
+        st.session_state.strategy_confirmed = False
     st.session_state.op_mode = {"运力": supply_val, "补贴": subsidy_val}
+    
     if supply_val < 20:
         st.warning("运力过低，存在明显履约风险，请谨慎操作。")
     run_agent = st.button("一键唤醒 AI agent 决策", use_container_width=True, type="primary")
@@ -160,56 +172,67 @@ s_factor = subsidy_val / 59.0
 sim_factor = (c_factor * s_factor) ** 0.4
 current_supply = int(19417 * c_factor)
 
-# 大盘基准准时率
+# 基准准时率计算
 base_punctuality = 62.15 if scenario == "异常天气状态" else 93.37
 scene_base = base_punctuality
 pred_punctuality = min(98.5, base_punctuality * (sim_factor ** 0.12))
 
-# ==============================================================================
-# 🔥 【硬核重构】：基于业务场景杠杆匹配度的沙盘推演模型
-# ==============================================================================
+# 基于比例失衡和场景的策略效能算法
 np.random.seed(int(capacity_val * 10 + subsidy_val))
-noise = np.random.normal(0, 0.05)  # 引入极小的动态随机指纹噪声
-
+noise = np.random.normal(0, 0.05)
 total_input = capacity_val + subsidy_val
 
 if total_input == 0:
-    p_delta = -5.0  # 毫无投入，准时率雪崩
+    p_delta = -5.0
 else:
-    # 计算当前两者的相对配比 (0.0 ~ 1.0)
     supply_ratio = capacity_val / total_input
-    
     if scenario == "异常天气状态":
-        # 恶劣天气核心痛点：司机不出车。此时补贴倾斜具有决定性（最完美比例是补贴占60%~80%）
-        # 计算当前比例与黄金比例 (supply_ratio=0.35) 的偏离度
         deviation = abs(supply_ratio - 0.35)
-        # 基础效能由补贴和总投入决定，受到比例偏离惩罚
         efficiency = (subsidy_val * 0.8 + capacity_val * 0.2) / 50.0
         p_delta = (4.5 * np.log1p(efficiency) - deviation * 5.0) + noise
-        p_delta = max(0.1, min(7.2, p_delta))  # 恶劣天气下弹性巨大
-        
+        p_delta = max(0.1, min(7.2, p_delta))
     elif scenario == "节假日大促状态":
-        # 大促核心痛点：爆发式大单量。需要两手抓，运力略微占大头（最完美比例为 运力60% : 补贴40%）
         deviation = abs(supply_ratio - 0.60)
         efficiency = (capacity_val * 0.5 + subsidy_val * 0.5) / 50.0
         p_delta = (2.2 * np.log1p(efficiency) - deviation * 4.0) + noise
         p_delta = max(-0.5, min(3.5, p_delta))
-        
     else:
-        # 日常正常状态：追求稳健。最佳状态是日常默认推荐值（运力70% : 补贴30%）
         deviation = abs(supply_ratio - 0.70)
         efficiency = (capacity_val * 0.7 + subsidy_val * 0.3) / 50.0
-        # 如果比例严重畸形（比如全砸补贴或者不要运力），甚至带来负收益
         p_delta = (1.2 * np.log1p(efficiency) - deviation * 3.5) + noise
         p_delta = max(-1.2, min(1.8, p_delta))
 
-# 计算执行后的最终准时率
 actual_punctuality = min(99.5, max(10.0, pred_punctuality + p_delta))
 
-# 更新其他关联财务指标
+# ==============================================================================
+# 🔥 【新增联动】：动态计算 Agent 推理补贴明细与实时资金池实时扣减
+# ==============================================================================
+# 动态计算当前滑块策略产生的预估补贴总量和阶梯价
+new_allocated_subsidy = int(3250 * s_factor)
+avg_subsidy_per_order = round(1.2 * s_factor, 2)
+max_subsidy_per_order = round(avg_subsidy_per_order * 1.6, 2)
+min_subsidy_per_order = round(avg_subsidy_per_order * 0.4, 2)
+
+# 基础静态资金池数据
+base_spent = 2447
+total_budget = 10000
+
+# 如果点击了“确认执行”，资金池发生实质性变更叠加
+if st.session_state.strategy_confirmed:
+    current_spent = base_spent + new_allocated_subsidy
+    current_cpc = round((0.42 * s_factor) + 0.35, 2)  # CPC 跃升
+else:
+    current_spent = base_spent
+    current_cpc = 0.42
+
+current_remaining = total_budget - current_spent
+budget_water_level = round((current_spent / total_budget) * 100, 1)
+
+# 大盘其他关联展现指标
 current_subsidy = int(2447 * s_factor)
 current_roi = round(max(0.5, min(2.5, 1.5 * sim_factor / (s_factor ** 0.7 if s_factor > 0 else 1))), 2)
 
+# 熔断提示
 if scenario == "异常天气状态" or supply_val < 20:
     st.error("[⚠️ 触发系统熔断] 当前参数将导致利润严重倒挂！")
     a, b, c = st.columns(3)
@@ -217,12 +240,13 @@ if scenario == "异常天气状态" or supply_val < 20:
         st.session_state.op_mode = {"运力": 65, "补贴": 25}
         st.rerun()
     if b.button("B方案：暴雨保底", use_container_width=True):
-        st.session_state.op_mode = {"运力": 35, "补贴": 65} # 对应暴雨黄金比例
+        st.session_state.op_mode = {"运力": 35, "补贴": 65}
         st.rerun()
     if c.button("C方案：大促激进", use_container_width=True):
-        st.session_state.op_mode = {"运力": 60, "补贴": 40} # 对应大促销黄金比例
+        st.session_state.op_mode = {"运力": 60, "补贴": 40}
         st.rerun()
 
+# 页面头部渲染
 header_left, header_right = st.columns([1.7, 1.0], vertical_alignment="center")
 with header_left:
     st.markdown('<div class="title">ISDP 智能供需决策中心</div>', unsafe_allow_html=True)
@@ -257,7 +281,7 @@ with k2:
 with k3:
     st.metric("相对准时率", f"{scene_base:.2f}%")
 with k4:
-    st.metric("补贴金额", f"{current_subsidy:,d}")
+    st.metric("大盘扣减补贴", f"${current_spent:,d}")
 with k5:
     st.metric("核心 ROI", f"{current_roi:.2f}")
     if simulation.core_roi > 1.5:
@@ -315,12 +339,13 @@ with left:
     )
     trend_chart = (gap_bars + demand_supply + a2r_line + health_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
     st.altair_chart(trend_chart, use_container_width=True)
+    
+    # 这里的看盘核心资金卡片与下方的“确认执行”进行深层联动
     st.markdown(
         f'<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
-        f'<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">$2,447</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
-        f'<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">${1.18 * s_factor:.2f}</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">{max(0.8, 1.65 / (s_factor ** 0.5 if s_factor > 0 else 1)):.2f}</span></div>'
-        '</div>'
-        '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
+        f'<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">${current_spent:,d}</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">${current_remaining:,d}</span> <span style="color:#8fa3b8;">(预算水位：{budget_water_level}%)</span></div>'
+        f'<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">${current_cpc:.2f}</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">{max(0.8, 1.65 / (s_factor ** 0.5 if s_factor > 0 else 1)):.2f}</span></div>'
+        '</div>',
         unsafe_allow_html=True,
     )
     st.markdown('</div>', unsafe_allow_html=True)
@@ -351,24 +376,12 @@ with right:
         axis=1,
     )
 
-    grid_points = []
-    for _, row in geo_df.iterrows():
-        for dx in (-0.02, 0, 0.02):
-            for dy in (-0.02, 0, 0.02):
-                grid_points.append(
-                    {
-                        "lon": row["lon"] + dx,
-                        "lat": row["lat"] + dy,
-                        "value": max(1, int(row["backlog"] * 0.2)),
-                    }
-                )
-    grid_df = pd.DataFrame(grid_points)
-
+    grid_df = pd.DataFrame(geo_df)
     grid_layer = pdk.Layer(
         "ScreenGridLayer",
         data=grid_df,
         get_position="[lon, lat]",
-        get_weight="value",
+        get_weight="backlog",
         cell_size_pixels=55,
         opacity=0.22,
         color_range=[[30, 41, 59, 20], [71, 85, 105, 40], [148, 163, 184, 80], [251, 146, 60, 120], [239, 68, 68, 160]],
@@ -398,36 +411,50 @@ with right:
     st.pydeck_chart(deck, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ==============================================================================
+# 🔥 AI 决策工作台（核心联动逻辑区）
+# ==============================================================================
 st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AI 决策工作台</div>', unsafe_allow_html=True)
+
 if run_agent:
     st.session_state.agent_ready = True
-    with st.status("AI agent 正在推理", expanded=True) as status:
-        st.write("🚨 【异常识别】监测到区域供给缺口。")
-        time.sleep(0.3)
-        st.write("🔍 【根因分析】由当前业务场景及供需配比缺口引发。")
-        time.sleep(0.3)
-        st.write(f"💡 【策略生成】建议根据场景弹性调节运力与补贴的最佳比例。")
-        time.sleep(0.3)
-        st.write("✅ 【方案确认】策略已同步至沙盘计算矩阵。")
-        status.update(label="AI agent 推理完成", state="complete")
 
 if st.session_state.agent_ready:
+    with st.status("AI agent 正在进行精细推理...", expanded=True) as status:
+        st.write("🚨 【异常识别】监测到当前网格区域面临供需倾斜风险。")
+        time.sleep(0.2)
+        st.write("🔍 【根因分析】触发特定业务场景供给侧弹性波动。")
+        time.sleep(0.2)
+        # 精细化打印出当前策略滑块下的最高/最低/平均补贴额度
+        st.write(f"💡 【精细策略生成】建议调整补贴方案：**预计释放策略总补贴 ${new_allocated_subsidy:,d}**。")
+        st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;🏷️ 订单平均发放补贴：**￥{avg_subsidy_per_order:.2f} 元**")
+        st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;📈 核心网格最高发放：**￥{max_subsidy_per_order:.2f} 元**")
+        st.write(f"&nbsp;&nbsp;&nbsp;&nbsp;📉 边缘网格最低保底：**￥{min_subsidy_per_order:.2f} 元**")
+        time.sleep(0.2)
+        st.write("✅ 【等待执行】请通过右侧按钮进行人工效能审计确认。")
+        status.update(label="AI agent 智能策略推演完毕", state="complete")
+
     c1, c2 = st.columns([1, 1])
     with c1:
         st.button("⚡ 同意 AI 策略，一键下发执行", use_container_width=True, type="primary")
     with c2:
-        if st.button("确认执行", use_container_width=True):
+        if st.button("确认执行并扣减财务预算", use_container_width=True):
             st.session_state.strategy_confirmed = True
+            st.rerun()  # 触发重绘，让上方数据卡片无缝刷新
 
     if st.session_state.strategy_confirmed:
-        st.markdown('<div style="margin-bottom: 12px; background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="margin-bottom: 12px; background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 10px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">'
+            f'✅ 策略执行成功 | 财务预算已成功锁定并追加扣减 <b>${new_allocated_subsidy:,d}</b> ！调度令已发至 ERP 系统 (流水号: ISDP-2026-{int(time.time())%10000:04d})'
+            f'</div>', 
+            unsafe_allow_html=True
+        )
 
-# 展示经过策略矩阵洗礼后的硬核指标
+# 展示经过洗礼后的实时大盘指标
 b1, b2 = st.columns(2)
 with b1:
     st.metric("执行前预估准时率", f"{pred_punctuality:.2f}%")
 with b2:
-    # 格式化 delta
     delta_sign = "+" if p_delta >= 0 else ""
     st.metric(
         label="执行后实际准时率", 
@@ -438,8 +465,7 @@ with b2:
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
-ab = simulation.ab_metrics
-结论 = "当前供需杠杆处于高效匹配区间" if p_delta > 0.8 else "杠杆比例失衡，策略效能低下"
+结论 = "当前策略处于黄金匹配区间，资金利用率高" if p_delta > 0.8 else "配比失衡导致部分资金流失，请调整滑块后再确认"
 st.info(结论)
 ab_display = pd.DataFrame(
     {
@@ -462,4 +488,4 @@ ab_style = ab_display.style.set_table_styles(
 st.table(ab_style)
 st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption(f"当前场景：{scenario} ｜ 供需匹配策略引擎已启动（包含失衡度惩罚机制）。")
+st.caption(f"业务沙盘中心 ｜ 执行确认与实时财务总池全面打通。")
