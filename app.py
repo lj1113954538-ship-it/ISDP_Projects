@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+import numpy as np
 
 import altair as alt
 import pandas as pd
@@ -143,8 +144,8 @@ with st.sidebar:
     st.markdown("### ISDP 调度台")
     scenario = st.selectbox("场景选择", list(SCENARIOS.keys()), index=list(SCENARIOS.keys()).index(st.session_state.scenario))
     st.session_state.scenario = scenario
-    supply_val = st.slider("运力", 0, 100, int(st.session_state.op_mode["运力"]))
-    subsidy_val = st.slider("补贴", 0, 100, int(st.session_state.op_mode["补贴"]))
+    supply_val = st.slider("运力调度值", 0, 100, int(st.session_state.op_mode["运力"]))
+    subsidy_val = st.slider("补贴投放值", 0, 100, int(st.session_state.op_mode["补贴"]))
     st.session_state.op_mode = {"运力": supply_val, "补贴": subsidy_val}
     if supply_val < 20:
         st.warning("运力过低，存在明显履约风险，请谨慎操作。")
@@ -152,22 +153,60 @@ with st.sidebar:
 
 simulation = simulate_business_scenario(scenario)
 summary = summarize_by_hour(simulation.records)
-capacity_val = int(supply_val)
-subsidy_val = int(subsidy_val)
+capacity_val = float(supply_val)
+subsidy_val = float(subsidy_val)
 c_factor = capacity_val / 71.0
 s_factor = subsidy_val / 59.0
 sim_factor = (c_factor * s_factor) ** 0.4
 current_supply = int(19417 * c_factor)
 
-# 【黄金逻辑】：定义大盘相对准时率为不随滑块摇摆的客观实时状态
+# 大盘基准准时率
 base_punctuality = 62.15 if scenario == "异常天气状态" else 93.37
 scene_base = base_punctuality
+pred_punctuality = min(98.5, base_punctuality * (sim_factor ** 0.12))
 
-# 下方沙盘推演公式
-pred_punctuality = min(98.5, base_punctuality * (sim_factor ** 0.15))
-actual_punctuality = min(99.0, pred_punctuality + 0.2)
-p_delta = actual_punctuality - pred_punctuality
+# ==============================================================================
+# 🔥 【硬核重构】：基于业务场景杠杆匹配度的沙盘推演模型
+# ==============================================================================
+np.random.seed(int(capacity_val * 10 + subsidy_val))
+noise = np.random.normal(0, 0.05)  # 引入极小的动态随机指纹噪声
 
+total_input = capacity_val + subsidy_val
+
+if total_input == 0:
+    p_delta = -5.0  # 毫无投入，准时率雪崩
+else:
+    # 计算当前两者的相对配比 (0.0 ~ 1.0)
+    supply_ratio = capacity_val / total_input
+    
+    if scenario == "异常天气状态":
+        # 恶劣天气核心痛点：司机不出车。此时补贴倾斜具有决定性（最完美比例是补贴占60%~80%）
+        # 计算当前比例与黄金比例 (supply_ratio=0.35) 的偏离度
+        deviation = abs(supply_ratio - 0.35)
+        # 基础效能由补贴和总投入决定，受到比例偏离惩罚
+        efficiency = (subsidy_val * 0.8 + capacity_val * 0.2) / 50.0
+        p_delta = (4.5 * np.log1p(efficiency) - deviation * 5.0) + noise
+        p_delta = max(0.1, min(7.2, p_delta))  # 恶劣天气下弹性巨大
+        
+    elif scenario == "节假日大促状态":
+        # 大促核心痛点：爆发式大单量。需要两手抓，运力略微占大头（最完美比例为 运力60% : 补贴40%）
+        deviation = abs(supply_ratio - 0.60)
+        efficiency = (capacity_val * 0.5 + subsidy_val * 0.5) / 50.0
+        p_delta = (2.2 * np.log1p(efficiency) - deviation * 4.0) + noise
+        p_delta = max(-0.5, min(3.5, p_delta))
+        
+    else:
+        # 日常正常状态：追求稳健。最佳状态是日常默认推荐值（运力70% : 补贴30%）
+        deviation = abs(supply_ratio - 0.70)
+        efficiency = (capacity_val * 0.7 + subsidy_val * 0.3) / 50.0
+        # 如果比例严重畸形（比如全砸补贴或者不要运力），甚至带来负收益
+        p_delta = (1.2 * np.log1p(efficiency) - deviation * 3.5) + noise
+        p_delta = max(-1.2, min(1.8, p_delta))
+
+# 计算执行后的最终准时率
+actual_punctuality = min(99.5, max(10.0, pred_punctuality + p_delta))
+
+# 更新其他关联财务指标
 current_subsidy = int(2447 * s_factor)
 current_roi = round(max(0.5, min(2.5, 1.5 * sim_factor / (s_factor ** 0.7 if s_factor > 0 else 1))), 2)
 
@@ -178,10 +217,10 @@ if scenario == "异常天气状态" or supply_val < 20:
         st.session_state.op_mode = {"运力": 65, "补贴": 25}
         st.rerun()
     if b.button("B方案：暴雨保底", use_container_width=True):
-        st.session_state.op_mode = {"运力": 55, "补贴": 80}
+        st.session_state.op_mode = {"运力": 35, "补贴": 65} # 对应暴雨黄金比例
         st.rerun()
     if c.button("C方案：大促激进", use_container_width=True):
-        st.session_state.op_mode = {"运力": 85, "补贴": 60}
+        st.session_state.op_mode = {"运力": 60, "补贴": 40} # 对应大促销黄金比例
         st.rerun()
 
 header_left, header_right = st.columns([1.7, 1.0], vertical_alignment="center")
@@ -290,7 +329,6 @@ with right:
     st.markdown('<div class="panel"><div class="panel-title">区域热力监控图</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
     
-    # 【核心重构】：让排队积压量随着 sim_factor 增大而真实消融变浅，解决“挤成一坨、永不褪色”的 Bug
     geo_df["backlog"] = (geo_df["weight"] * 18 / (sim_factor ** 1.6)).round(0).astype(int)
     geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
     geo_df["a2r"] = (98 - geo_df["weight"] * 1.6 * (1.0 / sim_factor)).round(1)
@@ -298,7 +336,6 @@ with right:
     geo_df["sub_zone"] = [f"二级网格-{i+1:02d}" for i in range(len(geo_df))]
     geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1600)
     
-    # 【专业色彩映射】：供需出问题时凸显异常深红，随着滑块策略投入，积压减少，颜色自动转为橙黄或浅蓝
     geo_df["fill_rgba"] = geo_df["backlog"].apply(
         lambda x: [239, 68, 68, 220] if x >= 14 else ([245, 158, 11, 170] if x >= 6 else [59, 130, 246, 60])
     )
@@ -314,7 +351,6 @@ with right:
         axis=1,
     )
 
-    # 补充灰度底图网格层
     grid_points = []
     for _, row in geo_df.iterrows():
         for dx in (-0.02, 0, 0.02):
@@ -368,11 +404,11 @@ if run_agent:
     with st.status("AI agent 正在推理", expanded=True) as status:
         st.write("🚨 【异常识别】监测到区域供给缺口。")
         time.sleep(0.3)
-        st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
+        st.write("🔍 【根因分析】由当前业务场景及供需配比缺口引发。")
         time.sleep(0.3)
-        st.write(f"💡 【策略生成】建议每单补贴上调 {round(3.5 * s_factor, 1)} 元。")
+        st.write(f"💡 【策略生成】建议根据场景弹性调节运力与补贴的最佳比例。")
         time.sleep(0.3)
-        st.write("✅ 【方案确认】等待人工确认后下发执行。")
+        st.write("✅ 【方案确认】策略已同步至沙盘计算矩阵。")
         status.update(label="AI agent 推理完成", state="complete")
 
 if st.session_state.agent_ready:
@@ -386,22 +422,24 @@ if st.session_state.agent_ready:
     if st.session_state.strategy_confirmed:
         st.markdown('<div style="margin-bottom: 12px; background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
-# 【黄金对账逻辑修复】：执行前与执行后直接展现沙盘推演差值，delta 严格计算为 +0.20pp
+# 展示经过策略矩阵洗礼后的硬核指标
 b1, b2 = st.columns(2)
 with b1:
     st.metric("执行前预估准时率", f"{pred_punctuality:.2f}%")
 with b2:
+    # 格式化 delta
+    delta_sign = "+" if p_delta >= 0 else ""
     st.metric(
         label="执行后实际准时率", 
         value=f"{actual_punctuality:.2f}%", 
-        delta=f"+{p_delta:.2f}pp" if p_delta >= 0 else f"{p_delta:.2f}pp"
+        delta=f"{delta_sign}{p_delta:.2f}pp"
     )
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
 ab = simulation.ab_metrics
-结论 = "实验组效果显著，建议全量上线" if current_roi > 1.0 else "效果不显著，请保持现状"
+结论 = "当前供需杠杆处于高效匹配区间" if p_delta > 0.8 else "杠杆比例失衡，策略效能低下"
 st.info(结论)
 ab_display = pd.DataFrame(
     {
@@ -424,4 +462,4 @@ ab_style = ab_display.style.set_table_styles(
 st.table(ab_style)
 st.markdown('</div>', unsafe_allow_html=True)
 
-st.caption(f"场景：{scenario} ｜ 底层数据与前端展示已严格联动。")
+st.caption(f"当前场景：{scenario} ｜ 供需匹配策略引擎已启动（包含失衡度惩罚机制）。")
