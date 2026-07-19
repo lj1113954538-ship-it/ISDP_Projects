@@ -227,10 +227,12 @@ with left:
         {
             "hour": list(range(HOURS)),
             "Demand": [summary[h]["demand"] for h in range(HOURS)],
-            "Supply": [summary[h]["supply"] for h in range(HOURS)],
+            "Supply": [float(summary[h]["supply"]) for h in range(HOURS)],
         }
     )
+    trend["Supply"] = trend["Supply"].astype(float)
     trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"] * capacity_ratio
+    trend["Demand"] = trend["Demand"].astype(float)
     trend["Gap"] = trend["Supply"] - trend["Demand"]
     trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
     trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
