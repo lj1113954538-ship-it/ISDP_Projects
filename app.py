@@ -152,6 +152,9 @@ with st.sidebar:
 
 simulation = simulate_business_scenario(scenario)
 summary = summarize_by_hour(simulation.records)
+capacity_ratio = supply_val / 85.0
+subsidy_ratio = subsidy_val / 100.0
+sim_factor = (capacity_ratio * subsidy_ratio) ** 0.5
 
 if scenario == "异常天气状态" or supply_val < 20:
     st.error("[⚠️ 触发系统熔断] 当前参数将导致利润严重倒挂！")
@@ -220,8 +223,11 @@ with left:
             "Supply": [summary[h]["supply"] for h in range(HOURS)],
         }
     )
+    trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"] * capacity_ratio
+    trend["Gap"] = trend["Supply"] - trend["Demand"]
     trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
-    trend["A2R"] = (98 + (trend["Supply"] - trend["Demand"]) * 0.05).clip(lower=72, upper=99.5)
+    trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
+    trend.loc[9:14, "A2R"] = (trend.loc[9:14, "A2R"] * sim_factor).clip(upper=98.0)
     trend["A2R"] = trend["A2R"].astype(float)
     health_supply_ratio = trend.loc[
         [summary[h]["on_time_rate"] >= 98 for h in range(HOURS)],
@@ -253,9 +259,9 @@ with left:
     trend_chart = (gap_bars + demand_supply + a2r_line + health_line).resolve_scale(y="independent").properties(height=400, width="container").configure_view(strokeOpacity=0, fill="#11151c").configure(background="transparent").configure_axis(domainColor="#2a394c", tickColor="#2a394c").configure_legend(fillColor="#11151c", strokeColor="#233549")
     st.altair_chart(trend_chart, use_container_width=True)
     st.markdown(
-        '<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
-        '<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">$2,447</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
-        '<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">$1.18</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">1.65</span></div>'
+        f'<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
+        f'<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">$2,447</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
+        f'<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">${1.18 * subsidy_ratio:.2f}</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">{max(0.8, 1.65 / (subsidy_ratio ** 0.5 if subsidy_ratio > 0 else 1)):.2f}</span></div>'
         '</div>'
         '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
         unsafe_allow_html=True,
@@ -265,12 +271,12 @@ with left:
 with right:
     st.markdown('<div class="panel"><div class="panel-title">区域热力监控图</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
-    geo_df["backlog"] = (geo_df["weight"] * 18).round(0).astype(int)
+    geo_df["backlog"] = (geo_df["weight"] * 18 / sim_factor).round(0).astype(int)
     geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
     geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
     geo_df["zone_name"] = [f"一级网格-{i+1:02d}" for i in range(len(geo_df))]
     geo_df["sub_zone"] = [f"二级网格-{i+1:02d}" for i in range(len(geo_df))]
-    geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1600)
+    geo_df["radius"] = (geo_df["backlog"] * 120 / sim_factor).clip(300, 1600)
     geo_df["fill_rgba"] = geo_df["backlog"].apply(
         lambda x: [255, 75, 75, 210] if x >= 12 else ([255, 165, 0, 180] if x >= 6 else [255, 255, 255, 30])
     )
