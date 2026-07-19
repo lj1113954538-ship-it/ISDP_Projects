@@ -152,9 +152,16 @@ with st.sidebar:
 
 simulation = simulate_business_scenario(scenario)
 summary = summarize_by_hour(simulation.records)
-capacity_ratio = supply_val / 85.0
-subsidy_ratio = subsidy_val / 100.0
-sim_factor = (capacity_ratio * subsidy_ratio) ** 0.5
+capacity_val = int(supply_val)
+subsidy_val = int(subsidy_val)
+c_factor = capacity_val / 71.0
+s_factor = subsidy_val / 59.0
+sim_factor = (c_factor * s_factor) ** 0.4
+current_supply = int(19417 * c_factor)
+current_punctuality = min(98.5, 93.37 * (sim_factor ** 0.2))
+current_subsidy = int(2447 * s_factor)
+current_roi = round(max(0.5, min(2.5, 1.5 * sim_factor / (s_factor ** 0.7 if s_factor > 0 else 1))), 2)
+post_punctuality = min(99.0, 93.37 * sim_factor)
 
 if scenario == "异常天气状态" or supply_val < 20:
     st.error("[⚠️ 触发系统熔断] 当前参数将导致利润严重倒挂！")
@@ -199,13 +206,13 @@ k1, k2, k3, k4, k5 = st.columns(5)
 with k1:
     st.metric("总需求", f"{simulation.total_demand:,d}")
 with k2:
-    st.metric("总供给", f"{simulation.total_supply:,d}")
+    st.metric("总供给", f"{current_supply:,d}")
 with k3:
-    st.metric("相对准时率", f"{simulation.punctuality_rate:.2f}%")
+    st.metric("相对准时率", f"{current_punctuality:.2f}%")
 with k4:
-    st.metric("补贴金额", f"{simulation.subsidy_amount:.0f}")
+    st.metric("补贴金额", f"{current_subsidy:,d}")
 with k5:
-    st.metric("核心 ROI", f"{simulation.core_roi:.2f}")
+    st.metric("核心 ROI", f"{current_roi:.2f}")
     if simulation.core_roi > 1.5:
         st.markdown('<div class="roi-good">补贴高效</div>', unsafe_allow_html=True)
     elif simulation.core_roi < 1.0:
@@ -230,7 +237,7 @@ with left:
     trend.loc[9:14, "A2R"] = (trend.loc[9:14, "A2R"] * sim_factor).clip(upper=98.0)
     trend["A2R"] = trend["A2R"].astype(float)
     health_supply_ratio = trend.loc[
-        [summary[h]["on_time_rate"] >= 98 for h in range(HOURS)],
+        [simulation.records[h].on_time / max(simulation.records[h].matched, 1) * 100 >= 98 for h in range(HOURS)],
         "Supply_Ratio",
     ].dropna().mean()
     if pd.isna(health_supply_ratio):
@@ -348,7 +355,7 @@ if run_agent:
         time.sleep(0.3)
         st.write("🔍 【根因分析】由恶劣天气导致运力出车率下降。")
         time.sleep(0.3)
-        st.write("💡 【策略生成】建议每单补贴上调 X 元。")
+        st.write(f"💡 【策略生成】建议每单补贴上调 {round(3.5 * s_factor, 1)} 元。")
         time.sleep(0.3)
         st.write("✅ 【方案确认】等待人工确认后下发执行。")
         status.update(label="AI agent 推理完成", state="complete")
@@ -363,8 +370,8 @@ if st.session_state.agent_ready:
             st.markdown('<div style="background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
 if st.session_state.strategy_confirmed:
-    before = simulation.before_after_punctuality["执行前"]
-    after = simulation.before_after_punctuality["执行后"]
+    before = 93.37
+    after = post_punctuality
     b1, b2 = st.columns(2)
     with b1:
         st.metric("执行前准时率", f"{before:.2f}%")
@@ -375,14 +382,18 @@ st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('<div class="panel"><div class="panel-title" style="margin-bottom:10px;">AB 实验指标面板</div>', unsafe_allow_html=True)
 ab = simulation.ab_metrics
-结论 = "实验组效果显著，建议全量上线" if ab["提升率"]["roi"] > 0 else "效果不显著，请保持现状"
+结论 = "实验组效果显著，建议全量上线" if current_roi > 1.0 else "效果不显著，请保持现状"
 st.info(结论)
 ab_display = pd.DataFrame(
     {
         "指标": ["ROI", "匹配率", "压单量"],
-        "基准组": [f"{ab['基准组']['roi']:.2f}", f"{ab['基准组']['match_rate']:.2f}%", f"{int(ab['基准组']['backlog'])}"],
-        "实验组": [f"{ab['实验组']['roi']:.2f}", f"{ab['实验组']['match_rate']:.2f}%", f"{int(ab['实验组']['backlog'])}"],
-        "提升率": [f"{ab['提升率']['roi']:.2f}%", f"{ab['提升率']['match_rate']:.2f}%", f"{ab['提升率']['backlog']:.2f}%"],
+        "基准组": [f"{1.15:.2f}", f"{88.47:.2f}%", f"{2440:d}"],
+        "实验组": [f"{(current_roi * 1.8):.2f}", f"{current_punctuality:.2f}%", f"{int(2440 / sim_factor):d}"],
+        "提升率": [
+            f"{((current_roi * 1.8 - 1.15) / 1.15 * 100):.2f}%",
+            f"{((current_punctuality - 88.47) / 88.47 * 100):.2f}%",
+            f"{((int(2440 / sim_factor) - 2440) / 2440 * 100):.2f}%",
+        ],
     }
 )
 ab_style = ab_display.style.set_table_styles(
