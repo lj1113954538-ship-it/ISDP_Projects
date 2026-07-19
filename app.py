@@ -231,13 +231,12 @@ with left:
         }
     )
     trend["Supply"] = trend["Supply"].astype(float)
-    core_mask = trend["hour"].between(9, 14)
-    trend.loc[core_mask, "Supply"] = trend.loc[core_mask, "Supply"].astype(float) * capacity_ratio
+    trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"].to_numpy(dtype=float) * capacity_ratio
     trend["Demand"] = trend["Demand"].astype(float)
     trend["Gap"] = trend["Supply"] - trend["Demand"]
     trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
     trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
-    trend.loc[core_mask, "A2R"] = (trend.loc[core_mask, "A2R"] * sim_factor).clip(upper=98.0)
+    trend.loc[9:14, "A2R"] = (trend.loc[9:14, "A2R"] * sim_factor).clip(upper=98.0)
     trend["A2R"] = trend["A2R"].astype(float)
     health_supply_ratio = trend.loc[
         trend["A2R"] >= 98,
