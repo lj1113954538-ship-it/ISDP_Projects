@@ -236,12 +236,13 @@ with left:
         }
     )
     trend["Supply"] = trend["Supply"].astype(float)
-    trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"].to_numpy(dtype=float) * c_factor
+    core_mask = trend["hour"].between(9, 14)
+    trend.loc[core_mask, "Supply"] = trend.loc[core_mask, "Supply"].to_numpy(dtype=float) * c_factor
     trend["Demand"] = trend["Demand"].astype(float)
     trend["Gap"] = trend["Supply"] - trend["Demand"]
     trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
     trend["A2R"] = (98 + trend["Gap"] * 0.05).clip(lower=72, upper=99.5)
-    trend.loc[9:14, "A2R"] = (trend.loc[9:14, "A2R"] * sim_factor).clip(upper=98.0)
+    trend.loc[core_mask, "A2R"] = (trend.loc[core_mask, "A2R"] * sim_factor).clip(upper=98.0)
     trend["A2R"] = trend["A2R"].astype(float)
     health_supply_ratio = trend.loc[
         trend["A2R"] >= 98,
@@ -383,7 +384,7 @@ if st.session_state.strategy_confirmed:
     with b1:
         st.metric("执行前预估准时率", f"{before:.2f}%")
     with b2:
-        st.metric("执行后实际准时率", f"{after:.2f}%", delta=f"+{p_delta:.2f}%")
+        st.metric("执行后实际准时率", f"{after:.2f}%", delta=f"+{p_delta:.2f}pp")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
