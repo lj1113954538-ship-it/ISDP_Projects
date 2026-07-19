@@ -158,10 +158,15 @@ c_factor = capacity_val / 71.0
 s_factor = subsidy_val / 59.0
 sim_factor = (c_factor * s_factor) ** 0.4
 current_supply = int(19417 * c_factor)
-current_punctuality = min(98.5, 93.37 * (sim_factor ** 0.2))
+base_punctuality = 93.37
+scene_base = base_punctuality
+current_punctuality = scene_base
+pred_punctuality = min(98.5, base_punctuality * (sim_factor ** 0.15))
+actual_punctuality = min(99.0, pred_punctuality + 0.2)
+p_delta = actual_punctuality - base_punctuality
 current_subsidy = int(2447 * s_factor)
 current_roi = round(max(0.5, min(2.5, 1.5 * sim_factor / (s_factor ** 0.7 if s_factor > 0 else 1))), 2)
-post_punctuality = min(99.0, 93.37 * sim_factor)
+post_punctuality = actual_punctuality
 
 if scenario == "异常天气状态" or supply_val < 20:
     st.error("[⚠️ 触发系统熔断] 当前参数将导致利润严重倒挂！")
@@ -208,7 +213,7 @@ with k1:
 with k2:
     st.metric("总供给", f"{current_supply:,d}")
 with k3:
-    st.metric("相对准时率", f"{current_punctuality:.2f}%")
+    st.metric("相对准时率", f"{scene_base:.2f}%")
 with k4:
     st.metric("补贴金额", f"{current_subsidy:,d}")
 with k5:
@@ -372,13 +377,13 @@ if st.session_state.agent_ready:
             st.markdown('<div style="background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
 if st.session_state.strategy_confirmed:
-    before = 93.37
-    after = post_punctuality
+    before = pred_punctuality
+    after = actual_punctuality
     b1, b2 = st.columns(2)
     with b1:
-        st.metric("执行前准时率", f"{before:.2f}%")
+        st.metric("执行前预估准时率", f"{before:.2f}%")
     with b2:
-        st.metric("执行后准时率", f"{after:.2f}%", f"+{after - before:.2f}%")
+        st.metric("执行后实际准时率", f"{after:.2f}%", delta=f"+{p_delta:.2f}%")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
