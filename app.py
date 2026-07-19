@@ -126,7 +126,7 @@ st.markdown(
     .stAlert { border-radius: 8px; }
     iframe[title="st.iframe"] { width: 100% !important; }
 </style>
-""",
+    """,
     unsafe_allow_html=True,
 )
 
@@ -158,15 +158,18 @@ c_factor = capacity_val / 71.0
 s_factor = subsidy_val / 59.0
 sim_factor = (c_factor * s_factor) ** 0.4
 current_supply = int(19417 * c_factor)
-base_punctuality = 93.37
+
+# 【黄金逻辑】：定义大盘相对准时率为不随滑块摇摆的客观实时状态
+base_punctuality = 62.15 if scenario == "异常天气状态" else 93.37
 scene_base = base_punctuality
-current_punctuality = scene_base
+
+# 下方沙盘推演公式
 pred_punctuality = min(98.5, base_punctuality * (sim_factor ** 0.15))
 actual_punctuality = min(99.0, pred_punctuality + 0.2)
-p_delta = actual_punctuality - base_punctuality
+p_delta = actual_punctuality - pred_punctuality
+
 current_subsidy = int(2447 * s_factor)
 current_roi = round(max(0.5, min(2.5, 1.5 * sim_factor / (s_factor ** 0.7 if s_factor > 0 else 1))), 2)
-post_punctuality = actual_punctuality
 
 if scenario == "异常天气状态" or supply_val < 20:
     st.error("[⚠️ 触发系统熔断] 当前参数将导致利润严重倒挂！")
@@ -286,16 +289,20 @@ with left:
 with right:
     st.markdown('<div class="panel"><div class="panel-title">区域热力监控图</div>', unsafe_allow_html=True)
     geo_df = pd.DataFrame(simulation.geo_points).copy()
-    geo_df["backlog"] = (geo_df["weight"] * 18 / sim_factor).round(0).astype(int)
+    
+    # 【核心重构】：让排队积压量随着 sim_factor 增大而真实消融变浅，解决“挤成一坨、永不褪色”的 Bug
+    geo_df["backlog"] = (geo_df["weight"] * 18 / (sim_factor ** 1.6)).round(0).astype(int)
     geo_df["bonus"] = (geo_df["weight"] * 1.8).round(2)
-    geo_df["a2r"] = (98 - geo_df["weight"] * 1.6).round(1)
+    geo_df["a2r"] = (98 - geo_df["weight"] * 1.6 * (1.0 / sim_factor)).round(1)
     geo_df["zone_name"] = [f"一级网格-{i+1:02d}" for i in range(len(geo_df))]
     geo_df["sub_zone"] = [f"二级网格-{i+1:02d}" for i in range(len(geo_df))]
-    geo_df["radius"] = (geo_df["backlog"] * 120 / sim_factor).clip(300, 1600)
+    geo_df["radius"] = (geo_df["backlog"] * 120).clip(300, 1600)
+    
+    # 【专业色彩映射】：供需出问题时凸显异常深红，随着滑块策略投入，积压减少，颜色自动转为橙黄或浅蓝
     geo_df["fill_rgba"] = geo_df["backlog"].apply(
-        lambda x: [255, 75, 75, 210] if x >= 12 else ([255, 165, 0, 180] if x >= 6 else [255, 255, 255, 30])
+        lambda x: [239, 68, 68, 220] if x >= 14 else ([245, 158, 11, 170] if x >= 6 else [59, 130, 246, 60])
     )
-    geo_df["tri_size"] = (geo_df["backlog"] * 0.00055).clip(0.00045, 0.0018)
+    geo_df["tri_size"] = (geo_df["backlog"] * 0.00008 + 0.00045).clip(0.00045, 0.0018)
     geo_df["triangles"] = geo_df.apply(
         lambda row: [
             [
@@ -307,7 +314,7 @@ with right:
         axis=1,
     )
 
-    # 补充灰度底图网格层，强化区域轮廓感
+    # 补充灰度底图网格层
     grid_points = []
     for _, row in geo_df.iterrows():
         for dx in (-0.02, 0, 0.02):
@@ -375,16 +382,20 @@ if st.session_state.agent_ready:
     with c2:
         if st.button("确认执行", use_container_width=True):
             st.session_state.strategy_confirmed = True
-            st.markdown('<div style="background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
 
-if st.session_state.strategy_confirmed:
-    before = pred_punctuality
-    after = actual_punctuality
-    b1, b2 = st.columns(2)
-    with b1:
-        st.metric("执行前预估准时率", f"{before:.2f}%")
-    with b2:
-        st.metric("执行后实际准时率", f"{after:.2f}%", delta=f"+{p_delta:.2f}pp")
+    if st.session_state.strategy_confirmed:
+        st.markdown('<div style="margin-bottom: 12px; background-color: rgba(46, 160, 67, 0.15); border: 1px solid rgba(46, 160, 67, 0.4); padding: 8px 12px; border-radius: 6px; color: #56d364; font-size: 13px; font-weight: 500;">✅ 执行成功 | 调度令已下发至 ERP 系统 (单号: ISDP-2026-XXXX)</div>', unsafe_allow_html=True)
+
+# 【黄金对账逻辑修复】：执行前与执行后直接展现沙盘推演差值，delta 严格计算为 +0.20pp
+b1, b2 = st.columns(2)
+with b1:
+    st.metric("执行前预估准时率", f"{pred_punctuality:.2f}%")
+with b2:
+    st.metric(
+        label="执行后实际准时率", 
+        value=f"{actual_punctuality:.2f}%", 
+        delta=f"+{p_delta:.2f}pp" if p_delta >= 0 else f"{p_delta:.2f}pp"
+    )
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -396,10 +407,10 @@ ab_display = pd.DataFrame(
     {
         "指标": ["ROI", "匹配率", "压单量"],
         "基准组": [f"{1.15:.2f}", f"{88.47:.2f}%", f"{2440:d}"],
-        "实验组": [f"{(current_roi * 1.8):.2f}", f"{current_punctuality:.2f}%", f"{int(2440 / sim_factor):d}"],
+        "实验组": [f"{(current_roi * 1.8):.2f}", f"{pred_punctuality:.2f}%", f"{int(2440 / sim_factor):d}"],
         "提升率": [
             f"{((current_roi * 1.8 - 1.15) / 1.15 * 100):.2f}%",
-            f"{((current_punctuality - 88.47) / 88.47 * 100):.2f}%",
+            f"{((pred_punctuality - 88.47) / 88.47 * 100):.2f}%",
             f"{((int(2440 / sim_factor) - 2440) / 2440 * 100):.2f}%",
         ],
     }
