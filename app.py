@@ -231,7 +231,7 @@ with left:
         }
     )
     trend["Supply"] = trend["Supply"].astype(float)
-    trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"].to_numpy(dtype=float) * capacity_ratio
+    trend.loc[9:14, "Supply"] = trend.loc[9:14, "Supply"].to_numpy(dtype=float) * c_factor
     trend["Demand"] = trend["Demand"].astype(float)
     trend["Gap"] = trend["Supply"] - trend["Demand"]
     trend["Supply_Ratio"] = (trend["Supply"] / trend["Demand"]).replace([float("inf"), float("-inf")], pd.NA)
