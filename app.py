@@ -270,7 +270,7 @@ with left:
     st.markdown(
         f'<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px; color:#cbd5e1; font-size:0.84rem; line-height:1.35;">'
         f'<div>💰 今日已耗补贴：<span style="color:#ffffff; font-weight:700;">$2,447</span> | 剩余运营弹药：<span style="color:#67e8f9; font-weight:700;">$7,553</span> <span style="color:#8fa3b8;">(预算水位：24.5%)</span></div>'
-        f'<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">${1.18 * subsidy_ratio:.2f}</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">{max(0.8, 1.65 / (subsidy_ratio ** 0.5 if subsidy_ratio > 0 else 1)):.2f}</span></div>'
+        f'<div>💡 当前单均补贴成本(CPC)：<span style="color:#ffffff; font-weight:700;">${1.18 * s_factor:.2f}</span> | 预计策略ROI：<span style="color:#67e8f9; font-weight:700;">{max(0.8, 1.65 / (s_factor ** 0.5 if s_factor > 0 else 1)):.2f}</span></div>'
         '</div>'
         '<div class="chart-budget-bar"><div class="chart-budget-fill"></div></div>',
         unsafe_allow_html=True,
